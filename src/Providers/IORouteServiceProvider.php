@@ -152,14 +152,19 @@ class IORouteServiceProvider extends RouteServiceProvider
         }
 
 
-        if( in_array("wish-list", $enabledRoutes) || in_array("all", $enabledRoutes))
+        if( in_array("wish-list", $enabledRoutes) || in_array("all", $enabledRoutes) )
         {
             $router->get('wish-list', 'IO\Controllers\ItemWishListController@showWishList');
         }
 
-        if( in_array('order-return', $enabledRoutes) || in_array("all", $enabledRoutes))
+        if( in_array('order-return', $enabledRoutes) || in_array("all", $enabledRoutes) )
         {
             $router->get('returns/{orderId}', 'IO\Controllers\OrderReturnController@showOrderReturn');
+        }
+        
+        if( in_array('order-return-confirmation', $enabledRoutes) || in_array("all", $enabledRoutes) )
+        {
+            $router->get('return-confirmation', 'IO\Controllers\OrderReturnConfirmationController@showOrderReturnConfirmation');
         }
 
         if( (in_array("contact", $enabledRoutes) || in_array("all", $enabledRoutes) ) )
