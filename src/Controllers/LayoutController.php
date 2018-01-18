@@ -216,10 +216,14 @@ abstract class LayoutController extends Controller
 	protected function renderTemplateContainer(TemplateContainer $templateContainer)
 	{
 		// Render the received plugin
-		return $this->twig->render(
-			$templateContainer->getTemplate(),
-			$templateContainer->getTemplateData()
-		);
+        $this->trackRuntime('LayoutController.renderTemplateContainer.Start');
+        $template = $this->twig->render(
+            $templateContainer->getTemplate(),
+            $templateContainer->getTemplateData()
+        );
+        $this->trackRuntime('LayoutController.renderTemplateContainer.End');
+        
+        return $template;
 	}
 
 }
