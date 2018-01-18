@@ -14,6 +14,9 @@ use IO\Services\NotificationService;
 use Plenty\Plugin\ServiceProvider;
 use Plenty\Plugin\Templates\Twig;
 
+use IO\Middlewares\Performance;
+use IO\Services\PerformanceTrackingService;
+
 /**
  * Class IOServiceProvider
  * @package IO\Providers
@@ -25,6 +28,9 @@ class IOServiceProvider extends ServiceProvider
      */
     public function register()
     {
+        $this->addGlobalMiddleware(Performance::class);
+        $this->getApplication()->singleton(PerformanceTrackingService::class);
+        
         $this->getApplication()->register(ContentCachingProvider::class);
         $this->addGlobalMiddleware(Middleware::class);
         $this->getApplication()->register(IORouteServiceProvider::class);
@@ -44,16 +50,19 @@ class IOServiceProvider extends ServiceProvider
         $this->getApplication()->bind(ItemLoaderFactory::class, ItemLoaderFactoryES::class);
         $this->getApplication()->singleton(FacetExtensionContainer::class);
     }
-
+    
     /**
      * boot twig extensions and services
      * @param Twig $twig
+     * @param PerformanceTrackingService $performanceTracker
      */
-    public function boot(Twig $twig)
+    public function boot(Twig $twig, PerformanceTrackingService $performanceTracker)
     {
         $twig->addExtension(TwigServiceProvider::class);
         $twig->addExtension(TwigIOExtension::class);
         $twig->addExtension('Twig_Extensions_Extension_Intl');
         $twig->addExtension(TwigLoaderPresets::class);
+    
+        $performanceTracker->trackRuntime(__CLASS__.' after boot');
     }
 }

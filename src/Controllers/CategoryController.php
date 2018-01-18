@@ -7,13 +7,16 @@ use Plenty\Modules\Category\Models\Category;
 
 use IO\Helper\CategoryKey;
 
+use IO\Helper\Performance;
+
 /**
  * Class CategoryController
  * @package IO\Controllers
  */
 class CategoryController extends LayoutController
 {
-
+    use Performance;
+    
 	/**
 	 * Prepare and render the data for categories
 	 * @param string $lvl1 Level 1 of category url. Will be null at root page
@@ -44,8 +47,12 @@ class CategoryController extends LayoutController
 		{
 			$currentCategory = $this->categoryRepo->findCategoryByUrl($lvl1, $lvl2, $lvl3, $lvl4, $lvl5, $lvl6);
 		}
-        
-        return $this->renderCategory($currentCategory);
+  
+		$this->start('renderCategory');
+		$result = $this->renderCategory($currentCategory);
+		$this->track('renderCategory');
+		
+        return $result;
 	}
 
 }

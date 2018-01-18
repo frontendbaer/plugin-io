@@ -5,12 +5,16 @@ namespace IO\Services;
 use Plenty\Modules\Item\Availability\Contracts\AvailabilityRepositoryContract;
 use Plenty\Modules\Item\Availability\Models\Availability;
 
+use IO\Helper\Performance;
+
 /**
  * Class AvailabilityService
  * @package IO\Services
  */
 class AvailabilityService
 {
+    use Performance;
+    
 	/**
 	 * @var AvailabilityRepositoryContract
 	 */
@@ -32,6 +36,7 @@ class AvailabilityService
      */
 	public function getAvailabilityById( int $availabilityId = 0 )
     {
+        $this->trackRuntime('AvailabilityService');
         return $this->availabilityRepository->findAvailability( $availabilityId );
     }
 
