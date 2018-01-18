@@ -12,6 +12,8 @@ use Plenty\Plugin\Controller;
 use Plenty\Plugin\Events\Dispatcher;
 use Plenty\Plugin\Templates\Twig;
 
+use IO\Helper\Performance;
+
 /**
  * Supercall for specific controllers
  * Provide global methods for rendering templates received from separate layout plugin
@@ -21,6 +23,8 @@ use Plenty\Plugin\Templates\Twig;
 abstract class LayoutController extends Controller
 {
 
+    use Performance;
+    
 	/**
 	 * @var Application
 	 */
@@ -96,26 +100,30 @@ abstract class LayoutController extends Controller
 	 */
 	protected function renderCategory($category):string
 	{
+        $this->trackRuntime('LayoutController.renderCategory.Start');
 		if($category === null)
 		{
 			$category = $this->categoryRepo->get(
 				(int)$this->categoryMap->getID(CategoryKey::PAGE_NOT_FOUND)
 			);
 		}
-
+  
 		if($category === null)
 		{
             return '';
 		}
 
 		$this->categoryService->setCurrentCategory($category);
-
-		return $this->renderTemplate(
-			"tpl.category." . $category->type,
-			[
-				"category" => $category
-			]
-		);
+        
+        $rendered = $this->renderTemplate(
+            "tpl.category." . $category->type,
+            [
+                "category" => $category
+            ]);
+        
+        $this->trackRuntime('LayoutController.renderCategory.End');
+        
+		return $rendered;
 	}
 
 	/**
@@ -171,18 +179,29 @@ abstract class LayoutController extends Controller
 	 */
 	protected function renderTemplate(string $templateEvent, array $templateData = []):string
 	{
+	    $this->trackRuntime('LayoutController.renderTemplate.Start');
+	    
+        $this->start('buildTemplateContainer');
 		$templateContainer = $this->buildTemplateContainer($templateEvent, $templateData);
-		
+		$this->track('buildTemplateContainer');
+  
 		if($templateContainer->hasTemplate())
 		{
 			TemplateService::$currentTemplate = $templateEvent;
 
 			// Prepare the global data only if the template is available
+            $this->start('prepareTemplateData');
 			$this->prepareTemplateData($templateContainer, $templateData);
+            $this->track('prepareTemplateData');
 
 
 			// Render the received plugin
-			return $this->renderTemplateContainer($templateContainer);
+            $this->start('renderTemplateContainer');
+            $templateContainerResult = $this->renderTemplateContainer($templateContainer);
+            $this->track('renderTemplateContainer');
+            
+            $this->trackRuntime('LayoutController.renderTemplate.End');
+			return $templateContainerResult;
 		}
 		else
 		{

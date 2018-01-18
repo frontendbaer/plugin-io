@@ -35,6 +35,7 @@ class CategoryController extends LayoutController
 		$lvl5 = null,
 		$lvl6 = null):string
 	{
+        $this->trackRuntime('showCategory.Start');
 		// Get the current category
 		if($lvl1 === null)
 		{
@@ -48,10 +49,12 @@ class CategoryController extends LayoutController
 			$currentCategory = $this->categoryRepo->findCategoryByUrl($lvl1, $lvl2, $lvl3, $lvl4, $lvl5, $lvl6);
 		}
   
-		$this->start('renderCategory');
+		//$this->start('renderCategory');
 		$result = $this->renderCategory($currentCategory);
-		$this->track('renderCategory');
-		
+		//$this->track('renderCategory');
+        
+        $this->trackRuntime('showCategory.End');
+        
         return $result;
 	}
 
