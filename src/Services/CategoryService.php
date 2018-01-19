@@ -7,12 +7,16 @@ use Plenty\Modules\Category\Contracts\CategoryRepositoryContract;
 use Plenty\Modules\Category\Models\CategoryDetails;
 use Plenty\Repositories\Models\PaginatedResult;
 
+use IO\Helper\Performance;
+
 /**
  * Class CategoryService
  * @package IO\Services
  */
 class CategoryService
 {
+    use Performance;
+    
 	/**
 	 * @var CategoryRepositoryContract
 	 */
@@ -248,12 +252,16 @@ class CategoryService
      */
     public function getNavigationTree(string $type = "all", string $lang = null, int $maxLevel = 2):array
     {
+        $this->start('PageDesign.getNavigationTree');
         if ( $lang === null )
         {
             $lang = $this->sessionStorageService->getLang();
         }
 
-        return $this->categoryRepository->getLinklistTree($type, $lang, $this->webstoreConfig->getWebstoreConfig()->webstoreId, $maxLevel);
+        $tree = $this->categoryRepository->getLinklistTree($type, $lang, $this->webstoreConfig->getWebstoreConfig()->webstoreId, $maxLevel);
+        $this->track('PageDesign.getNavigationTree');
+        
+        return $tree;
     }
 
     /**

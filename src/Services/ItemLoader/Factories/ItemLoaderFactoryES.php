@@ -17,6 +17,8 @@ use Plenty\Modules\Item\Search\Contracts\VariationElasticSearchSearchRepositoryC
 use Plenty\Modules\Item\Search\Contracts\VariationElasticSearchMultiSearchRepositoryContract;
 use Plenty\Plugin\ConfigRepository;
 
+use IO\Helper\Performance;
+
 /**
  * Created by ptopczewski, 09.01.17 08:35
  * Class ItemLoaderFactoryES
@@ -24,6 +26,8 @@ use Plenty\Plugin\ConfigRepository;
  */
 class ItemLoaderFactoryES implements ItemLoaderFactory
 {
+    use Performance;
+    
     /**
      * @var FacetExtensionContainer
      */
@@ -46,6 +50,8 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
      */
     public function runSearch($loaderClassList, $resultFields,  $options = [])
     {
+        $this->start('ItemLoaderFactory.runSearch');
+        
         $result = [];
 
         $isMultiSearch = false;
@@ -71,7 +77,9 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
         $result = $this->attachPrices($result, $options);
         $result = $this->attachItemWishList($result);
         $result = $this->attachURLs($result);
-
+    
+        $this->track('ItemLoaderFactory.runSearch');
+        
         return $result;
     }
 
