@@ -191,6 +191,8 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
 
         $identifiers = [];
         
+        $options['loaderClassList'] = $loaderClassList;
+
         foreach($loaderClassList as $type => $loaderClasses)
         {
             foreach($loaderClasses as $identifier => $loaderClass)
