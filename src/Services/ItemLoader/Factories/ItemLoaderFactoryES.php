@@ -27,7 +27,7 @@ use IO\Helper\Performance;
 class ItemLoaderFactoryES implements ItemLoaderFactory
 {
     use Performance;
-    
+
     /**
      * @var FacetExtensionContainer
      */
@@ -51,7 +51,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
     public function runSearch($loaderClassList, $resultFields,  $options = [])
     {
         $this->start('ItemLoaderFactory.runSearch');
-        
+
         $result = [];
 
         $isMultiSearch = false;
@@ -77,14 +77,15 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
         $result = $this->attachPrices($result, $options);
         $result = $this->attachItemWishList($result);
         $result = $this->attachURLs($result);
-    
+
         $this->track('ItemLoaderFactory.runSearch');
-        
+
         return $result;
     }
 
     private function buildSingleSearch($loaderClassList, $resultFields, $options = [])
     {
+        $this->start("buildSingleSearch");
         /** @var VariationElasticSearchSearchRepositoryContract $elasticSearchRepo */
         $elasticSearchRepo = pluginApp(VariationElasticSearchSearchRepositoryContract::class);
 
@@ -171,17 +172,19 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
         {
             $elasticSearchRepo->addSearch($search);
         }
-        
+
         $result = $elasticSearchRepo->execute();
         foreach ($this->facetExtensionContainer->getFacetExtensions() as $facetExtension) {
             $result = $facetExtension->mergeIntoFacetsList($result);
         }
+        $this->track("buildSingleSearch");
 
         return $result;
     }
 
     private function buildMultiSearch($loaderClassList, $resultFields, $options = [])
     {
+        $this->start("buildMultiSearch");
         /**
          * @var VariationElasticSearchMultiSearchRepositoryContract $elasticSearchRepo
          */
@@ -190,7 +193,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
         $search = null;
 
         $identifiers = [];
-        
+
         $options['loaderClassList'] = $loaderClassList;
 
         foreach($loaderClassList as $type => $loaderClasses)
@@ -279,7 +282,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                         $identifiers[] = $identifier;
                     }
                 }
-    
+
                 if(!is_null($search))
                 {
                     $elasticSearchRepo->addSearch($search);
@@ -287,8 +290,9 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                 }
             }
         }
-        
+        $this->start("ESexecute");
         $rawResult = $elasticSearchRepo->execute();
+        $this->track("ESexecute");
 
         $result = [];
         foreach($rawResult as $key => $list)
@@ -308,16 +312,17 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
 
             }
         }
-    
+
         foreach ($this->facetExtensionContainer->getFacetExtensions() as $facetExtension) {
             $result = $facetExtension->mergeIntoFacetsList($result);
         }
-
+        $this->track("buildMultiSearch");
         return $result;
     }
 
     private function attachPrices($result, $options = [])
     {
+        $this->start("attachPrices");
         if(count($result['documents'])) {
             /** @var CustomerService $customerService */
             $customerService = pluginApp(CustomerService::class);
@@ -390,6 +395,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                 }
             }
         }
+        $this->track("attachPrices");
 
         return $result;
     }
@@ -397,6 +403,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
 
     private function attachItemWishList($result)
     {
+        $this->start("attachItemWishList");
         /**
          * @var ConfigRepository $configRepo
          */
@@ -418,11 +425,13 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                 }
             }
         }
+        $this->track("attachItemWishList");
         return $result;
     }
 
     private function attachURLs($result)
     {
+        $this->start("attachURLs");
         if ( count( $result ) && count( $result['ItemURLs'] ) )
         {
             /** @var VariationUrlBuilder $itemUrlBuilder */
@@ -446,6 +455,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
 
             }
         }
+        $this->track("attachURLs");
 
         return $result;
     }
