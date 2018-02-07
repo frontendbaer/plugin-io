@@ -1,6 +1,9 @@
 <?php
 namespace IO\Services\ItemLoader\Factories;
 
+use IO\Extensions\Filters\NumberFormatFilter;
+use IO\Helper\DefaultSearchResult;
+use IO\Services\CheckoutService;
 use IO\Helper\VariationPriceList;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\ItemLoader\Contracts\ItemLoaderFactory;
@@ -15,6 +18,7 @@ use Plenty\Modules\Cloud\ElasticSearch\Lib\Sorting\SortingInterface;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Source\IncludeSource;
 use Plenty\Modules\Item\Search\Contracts\VariationElasticSearchSearchRepositoryContract;
 use Plenty\Modules\Item\Search\Contracts\VariationElasticSearchMultiSearchRepositoryContract;
+use Plenty\Modules\Item\Search\Filter\SearchFilter;
 use Plenty\Plugin\ConfigRepository;
 
 use IO\Helper\Performance;
@@ -74,6 +78,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
             $result = $this->buildSingleSearch($loaderClassList['single'], $resultFields, $options);
         }
 
+        $result = $this->normalizeResult($result);
         $result = $this->attachPrices($result, $options);
         $result = $this->attachItemWishList($result);
         $result = $this->attachURLs($result);
@@ -107,7 +112,14 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
 
                 foreach($loader->getFilterStack($options) as $filter)
                 {
-                    $search->addFilter($filter);
+                    if($filter instanceof SearchFilter)
+                    {
+                        $search->addQuery($filter);
+                    }
+                    else
+                    {
+                        $search->addFilter($filter);
+                    }
                 }
             }
 
@@ -213,7 +225,14 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
 
                     foreach($loader->getFilterStack($options) as $filter)
                     {
-                        $search->addFilter($filter);
+                        if($filter instanceof SearchFilter)
+                        {
+                            $search->addQuery($filter);
+                        }
+                        else
+                        {
+                            $search->addFilter($filter);
+                        }
                     }
                 }
 
@@ -306,9 +325,13 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
             }
             else
             {
-                $result[$identifiers[$key-1]] = $this->attachPrices($list);
-                $list = $result[$identifiers[$key-1]];
-                $result[$identifiers[$key-1]] = $this->attachItemWishList($list);
+                $identifier = $identifiers[$key-1];
+                $result[$identifier] = $this->attachPrices($result[$identifier]);
+                if ( $identifier !== "Facets" )
+                {
+                    $result[$identifier] = $this->normalizeResult( $result[$identifier] );
+                }
+                $result[$identifier] = $this->attachItemWishList( $result[$identifier] );
 
             }
         }
@@ -456,6 +479,19 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
             }
         }
         $this->track("attachURLs");
+
+        return $result;
+    }
+
+    private function normalizeResult($result)
+    {
+        if( count($result['documents']) )
+        {
+            foreach($result['documents'] as $key => $variation)
+            {
+                $result['documents'][$key]['data'] = DefaultSearchResult::merge( $variation['data'] );
+            }
+        }
 
         return $result;
     }
