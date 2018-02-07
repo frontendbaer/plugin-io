@@ -37,13 +37,16 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
      */
     private $facetExtensionContainer;
 
+    private $showNetPrice;
+
     /**
      * ItemLoaderFactoryES constructor.
      * @param FacetExtensionContainer $facetExtensionContainer
      */
-    public function __construct(FacetExtensionContainer $facetExtensionContainer)
+    public function __construct(FacetExtensionContainer $facetExtensionContainer, CustomerService $customerService)
     {
         $this->facetExtensionContainer = $facetExtensionContainer;
+        $this->showNetPrice = $customerService->showNetPrices();
     }
 
     /**
@@ -326,9 +329,11 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
             else
             {
                 $identifier = $identifiers[$key-1];
-                $result[$identifier] = $this->attachPrices($list);
-                if ( $identifier !== "Facets" )
+                if ( $identifier !== "Facets" && $identifier !== "ItemURLs")
                 {
+                    $this->start("attach_prices_" . $identifier );
+                    $result[$identifier] = $this->attachPrices($list);
+                    $this->track("attach_prices_" . $identifier );
                     $result[$identifier] = $this->normalizeResult( $result[$identifier] );
                 }
                 $result[$identifier] = $this->attachItemWishList( $result[$identifier] );
@@ -395,7 +400,6 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                         $unit = $variation['data']['unit']['unitOfMeasurement'];
                     }
 
-
                     $priceList = VariationPriceList::create( $variationId, $minimumQuantity, $maximumOrderQuantity, $lot, $unit );
 
                     // assign minimum order quantity from price list (may be recalculated depending on available graduated prices)
@@ -411,7 +415,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                     }
 
                     $variation['data']['calculatedPrices'] = $priceList->getCalculatedPrices( $quantity );
-                    $variation['data']['prices'] = $priceList->toArray( $quantity );
+                    $variation['data']['prices'] = $priceList->toArray( $quantity, $this->showNetPrice );
 
 
                     $result['documents'][$key] = $variation;

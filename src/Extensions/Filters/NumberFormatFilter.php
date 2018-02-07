@@ -99,9 +99,21 @@ class NumberFormatFilter extends AbstractFilter
     {
         if(!is_null($value) && !is_null($currencyISO) && strlen($currencyISO))
         {
-            $value = $this->trimNewlines($value);
-            $currencyISO = $this->trimNewlines($currencyISO);
+            $formatter = $this->getMonetaryFormatter( $currencyISO );
 
+            return $formatter->format($value);
+        }
+
+        return '';
+    }
+
+    private static $monetaryFormatters = [];
+
+    private function getMonetaryFormatter( $currencyISO )
+    {
+        $currencyISO = $this->trimNewlines($currencyISO);
+        if ( !array_key_exists( $currencyISO, self::$monetaryFormatters ) )
+        {
             $locale            = LanguageMap::getLocale();
 
             $formatter = numfmt_create($locale, \NumberFormatter::CURRENCY);
@@ -126,10 +138,10 @@ class NumberFormatFilter extends AbstractFilter
                 $formatter->setSymbol(\NumberFormatter::MONETARY_GROUPING_SEPARATOR_SYMBOL, $thousands_separator);
             }
 
-            return $formatter->format($value);
-
+            self::$monetaryFormatters[$currencyISO] = $formatter;
         }
 
-        return '';
+        return self::$monetaryFormatters[$currencyISO];
     }
+
 }

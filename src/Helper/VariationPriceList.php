@@ -16,9 +16,12 @@ use Plenty\Modules\Item\SalesPrice\Models\SalesPriceSearchResponse;
 use Plenty\Modules\Item\Unit\Contracts\UnitNameRepositoryContract;
 use Plenty\Modules\Item\Unit\Contracts\UnitRepositoryContract;
 use Plenty\Plugin\Application;
+use Plenty\Plugin\CachingRepository;
 
 class VariationPriceList
 {
+    use Performance;
+
     const TYPE_DEFAULT          = 'default';
     const TYPE_RRP              = 'rrp';
     const TYPE_SPECIAL_OFFER    = 'specialOffer';
@@ -41,9 +44,16 @@ class VariationPriceList
     /** @var NumberFormatFilter $numberFormatFilter */
     private $numberFormatFilter;
 
-    public function __construct( NumberFormatFilter $numberFormatFilter )
+    /** @var CachingRepository $cachingRepository */
+    private $cachingRepository;
+
+    /** @var SalesPriceSearchRequest $salesPriceSearchRequest */
+    private static $salesPriceSearchRequest;
+
+    public function __construct( NumberFormatFilter $numberFormatFilter, CachingRepository $cachingRepository )
     {
         $this->numberFormatFilter = $numberFormatFilter;
+        $this->cachingRepository = $cachingRepository;
     }
 
     public static function create( int $variationId, $minimumOrderQuantity = 0, $maximumOrderQuantity = null, $lot = 0, $unit = null )
@@ -119,58 +129,71 @@ class VariationPriceList
             $basePrice = [];
             list( $basePrice['lot'], $basePrice['price'], $basePrice['unitKey'] ) = $basePriceService->getUnitPrice($this->lot, $unitPrice, $this->unit);
 
-            /**
-             * @var UnitRepositoryContract $unitRepository
-             */
-            $unitRepository = pluginApp(UnitRepositoryContract::class);
-
-            /** @var AuthHelper $authHelper */
-            $authHelper = pluginApp(AuthHelper::class);
-
-            $unitData = $authHelper->processUnguarded( function() use ($unitRepository, $basePrice)
-            {
-                $unitRepository->setFilters(['unitOfMeasurement' => $basePrice['unitKey']]);
-                return $unitRepository->all(['*'], 1, 1);
-            });
-
-
-            $unitId = $unitData->getResult()->first()->id;
-
-            /** @var UnitNameRepositoryContract $unitNameRepository */
-            $unitNameRepository = pluginApp(UnitNameRepositoryContract::class);
-            if ( $lang === null )
-            {
-                $lang = pluginApp(SessionStorageService::class)->getLang();
-            }
-            $unitName = $unitNameRepository->findOne($unitId, $lang)->name;
+            $unitName = $this->getUnitName( $basePrice['unitKey'], $lang );
 
             $basePriceString = $this->numberFormatFilter->formatMonetary($basePrice['price'], $currency).' / '.($basePrice['lot'] > 1 ? $basePrice['lot'].' ' : '').$unitName;
         }
 
+
         return $basePriceString;
     }
 
-    public function toArray( $quantity = null )
+    private function getUnitName( $unitKey, $lang = null )
+    {
+        if ( $lang === null )
+        {
+            $lang = pluginApp(SessionStorageService::class)->getLang();
+        }
+
+        return $this->cachingRepository->remember(
+            "unit_name.$unitKey.$lang",
+            60,
+            function() use($unitKey, $lang)
+            {
+                /**
+                 * @var UnitRepositoryContract $unitRepository
+                 */
+                $unitRepository = pluginApp(UnitRepositoryContract::class);
+
+                /** @var AuthHelper $authHelper */
+                $authHelper = pluginApp(AuthHelper::class);
+
+                $unitData = $authHelper->processUnguarded( function() use ($unitRepository, $unitKey)
+                {
+                    $unitRepository->setFilters(['unitOfMeasurement' => $unitKey]);
+                    return $unitRepository->all(['*'], 1, 1);
+                });
+
+
+                $unitId = $unitData->getResult()->first()->id;
+
+                /** @var UnitNameRepositoryContract $unitNameRepository */
+                $unitNameRepository = pluginApp(UnitNameRepositoryContract::class);
+
+                return $unitNameRepository->findOne($unitId, $lang)->name;
+            }
+        );
+    }
+
+    public function toArray( $quantity = null, $showNetPrice = false )
     {
         if ( $quantity === null )
         {
             $quantity = $this->minimumOrderQuantity;
         }
 
-        /** @var CustomerService $customerService */
-        $customerService = pluginApp( CustomerService::class );
-        $showNetPrice = $customerService->showNetPrices();
-
         $defaultPrice   = $this->findPriceForQuantity( $quantity );
         $rrp            = $this->findPriceForQuantity( $quantity, self::TYPE_RRP );
         $specialOffer   = $this->findPriceForQuantity( $quantity, self::TYPE_SPECIAL_OFFER );
 
-        return [
+        $result = [
             'default'           => $this->preparePrice( $defaultPrice, $showNetPrice ),
             'rrp'               => $this->preparePrice( $rrp, $showNetPrice ),
             'specialOffer'      => $this->preparePrice( $specialOffer, $showNetPrice ),
             'graduatedPrices'   => $this->getGraduatedPrices( $showNetPrice )
         ];
+
+        return $result;
     }
 
     public function getCalculatedPrices( $quantity = null )
@@ -268,38 +291,42 @@ class VariationPriceList
 
     private function getSearchRequest( int $variationId, string $type = self::TYPE_DEFAULT, float $quantity = 0 )
     {
-        /** @var SalesPriceSearchRequest $salesPriceSearchRequest */
-        $salesPriceSearchRequest = pluginApp(SalesPriceSearchRequest::class);
-        $salesPriceSearchRequest->variationId = $variationId;
-        $salesPriceSearchRequest->accountId   = 0;
-        $salesPriceSearchRequest->quantity    = $quantity;
-        $salesPriceSearchRequest->type        = $type;
-
-        /** @var CustomerService $customerService */
-        $customerService = pluginApp( CustomerService::class );
-        $contact = $customerService->getContact();
-
-        if ( $contact instanceof Contact )
+        if ( self::$salesPriceSearchRequest === null )
         {
-            $salesPriceSearchRequest->accountType = $contact->singleAccess;
+            /** @var SalesPriceSearchRequest $salesPriceSearchRequest */
+            self::$salesPriceSearchRequest = pluginApp(SalesPriceSearchRequest::class);
+            self::$salesPriceSearchRequest->accountId   = 0;
+
+            /** @var CustomerService $customerService */
+            $customerService = pluginApp( CustomerService::class );
+            $contact = $customerService->getContact();
+
+            if ( $contact instanceof Contact )
+            {
+                self::$salesPriceSearchRequest->accountType = $contact->singleAccess;
+            }
+            self::$salesPriceSearchRequest->customerClassId = $customerService->getContactClassId();
+
+            /** @var CheckoutService $checkoutService */
+            $checkoutService = pluginApp( CheckoutService::class );
+
+            self::$salesPriceSearchRequest->countryId = $checkoutService->getShippingCountryId();
+            self::$salesPriceSearchRequest->currency  = $checkoutService->getCurrency();
+
+            /** @var BasketService $basketService */
+            $basketService = pluginApp( BasketService::class );
+            self::$salesPriceSearchRequest->referrerId = $basketService->getBasket()->referrerId;
+
+            /** @var Application $app */
+            $app = pluginApp( Application::class );
+            self::$salesPriceSearchRequest->plentyId = $app->getPlentyId();
         }
-        $salesPriceSearchRequest->customerClassId = $customerService->getContactClassId();
 
-        /** @var CheckoutService $checkoutService */
-        $checkoutService = pluginApp( CheckoutService::class );
+        self::$salesPriceSearchRequest->variationId = $variationId;
+        self::$salesPriceSearchRequest->quantity    = $quantity;
+        self::$salesPriceSearchRequest->type        = $type;
 
-        $salesPriceSearchRequest->countryId = $checkoutService->getShippingCountryId();
-        $salesPriceSearchRequest->currency  = $checkoutService->getCurrency();
-
-        /** @var BasketService $basketService */
-        $basketService = pluginApp( BasketService::class );
-        $salesPriceSearchRequest->referrerId = $basketService->getBasket()->referrerId;
-
-        /** @var Application $app */
-        $app = pluginApp( Application::class );
-        $salesPriceSearchRequest->plentyId = $app->getPlentyId();
-
-        return $salesPriceSearchRequest;
+        return self::$salesPriceSearchRequest;
     }
 
     private function preparePrice( $price, $showNetPrice = false )
@@ -309,7 +336,7 @@ class VariationPriceList
             return null;
         }
 
-        return [
+        $result = [
             'price'                 => [
                 'value'     => $showNetPrice ? $price->priceNet : $price->price,
                 'formatted' => $this->numberFormatFilter->formatMonetary( $showNetPrice ? $price->priceNet : $price->price, $price->currency )
@@ -336,5 +363,9 @@ class VariationPriceList
             'isNet'                 => $showNetPrice,
             'data'                  => $price
         ];
+
+
+        return $result;
+
     }
 }

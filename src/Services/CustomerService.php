@@ -4,6 +4,7 @@ namespace IO\Services;
 
 use IO\Api\Resources\CustomerAddressResource;
 use IO\Builder\Order\OrderType;
+use IO\Helper\Performance;
 use IO\Models\LocalizedOrder;
 use IO\Validators\Customer\ContactValidator;
 use IO\Validators\Customer\AddressValidator;
@@ -25,6 +26,7 @@ use IO\Constants\SessionStorageKeys;
 use IO\Services\OrderService;
 use IO\Services\NotificationService;
 use IO\Services\CustomerPasswordResetService;
+use Plenty\Plugin\CachingRepository;
 use Plenty\Plugin\Events\Dispatcher;
 use Plenty\Modules\Account\Contact\Contracts\ContactClassRepositoryContract;
 
@@ -35,6 +37,8 @@ use Plenty\Modules\Account\Contact\Contracts\ContactClassRepositoryContract;
  */
 class CustomerService
 {
+    use Performance;
+
     /**
      * @var ContactAccountRepositoryContract $accountRepository
      */
@@ -60,6 +64,9 @@ class CustomerService
 	 * @var UserSession
 	 */
 	private $userSession = null;
+
+	/** @var CachingRepository $cachingRepository */
+	private $cachingRepository;
     
     /**
      * CustomerService constructor.
@@ -74,13 +81,15 @@ class CustomerService
 		ContactRepositoryContract $contactRepository,
 		ContactAddressRepositoryContract $contactAddressRepository,
         AddressRepositoryContract $addressRepository,
-        SessionStorageService $sessionStorage)
+        SessionStorageService $sessionStorage,
+        CachingRepository $cachingRepository )
 	{
 	    $this->accountRepository        = $accountRepository;
 		$this->contactRepository        = $contactRepository;
 		$this->contactAddressRepository = $contactAddressRepository;
         $this->addressRepository        = $addressRepository;
         $this->sessionStorage           = $sessionStorage;
+        $this->cachingRepository        = $cachingRepository;
 	}
 
     /**
@@ -100,37 +109,44 @@ class CustomerService
     {
         /** @var ContactClassRepositoryContract $contactClassRepo */
         $contactClassRepo = pluginApp(ContactClassRepositoryContract::class);
-    
+
         /** @var AuthHelper $authHelper */
         $authHelper = pluginApp(AuthHelper::class);
-    
+
         $contactClass = $authHelper->processUnguarded( function() use ($contactClassRepo, $contactClassId)
         {
             return $contactClassRepo->findContactClassDataById($contactClassId);
         });
-        
+
         return $contactClass;
     }
 
     public function showNetPrices()
     {
         $customerShowNet = false;
-        /** @var SessionStorageService $sessionStorageService */
-        $sessionStorageService = pluginApp( SessionStorageService::class );
-        $customer = $sessionStorageService->getCustomer();
+        $contactClassShowNet = false;
+
+        $customer = $this->sessionStorage->getCustomer();
         if ( $customer !== null )
         {
             $customerShowNet = $customer->showNetPrice;
-        }
-
-        $contactClassShowNet = false;
-        $contactClassId = $this->getContactClassId();
-        if ( $contactClassId !== null )
-        {
-            $contactClass = $this->getContactClassData( $contactClassId );
-            if ( $contactClass !== null )
+            $contactClassId = $customer->accountContactClassId;
+            if ( $contactClassId !== null )
             {
-                $contactClassShowNet = $contactClass['showNetPrice'];
+                $contactClassShowNet = $this->cachingRepository->remember(
+                    "contactClassShowNet.$contactClassId",
+                    60,
+                    function() use ($contactClassId)
+                    {
+                        $contactClass = $this->getContactClassData( $contactClassId );
+                        if ( $contactClass !== null )
+                        {
+                            return $contactClass['showNetPrice'];
+                        }
+
+                        return false;
+                    }
+                );
             }
         }
 
@@ -321,6 +337,8 @@ class CustomerService
 
 	public function getContactClassId()
     {
+        return $this->sessionStorage->getCustomer()->accountContactClassId;
+        /*
         $contact = $this->getContact();
         if ( $contact !== null && $contact->classId !== null )
         {
@@ -330,6 +348,7 @@ class CustomerService
         {
             return $this->getDefaultContactClassId();
         }
+        */
     }
     
     private function getDefaultContactClassId()
