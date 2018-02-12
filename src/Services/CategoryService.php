@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\MemoryCache;
 use IO\Helper\RuntimeTracker;
 use Plenty\Modules\Category\Models\Category;
 use Plenty\Modules\Category\Contracts\CategoryRepositoryContract;
@@ -14,6 +15,7 @@ use Plenty\Repositories\Models\PaginatedResult;
  */
 class CategoryService
 {
+    use MemoryCache;
     use RuntimeTracker;
 
 	/**
@@ -62,11 +64,11 @@ class CategoryService
 	 */
 	public function setCurrentCategoryID(int $catID = 0)
 	{
-	    $this->start("setCurrentCategoryID");
+	    $this->start("setCurrentCategoryId");
 		$this->setCurrentCategory(
 			$this->categoryRepository->get($catID, $this->sessionStorageService->getLang())
 		);
-	    $this->track("setCurrentCategoryID");
+	    $this->track("setCurrentCategoryId");
 	}
 
 	/**
@@ -76,6 +78,7 @@ class CategoryService
 	public function setCurrentCategory($cat)
 	{
 	    $this->start("setCurrentCategory");
+	    $lang = $this->sessionStorageService->getLang();
 		$this->currentCategory     = null;
 		$this->currentCategoryTree = [];
 
@@ -89,11 +92,12 @@ class CategoryService
 		while($cat !== null)
 		{
 			$this->currentCategoryTree[$cat->level] = $cat;
-			$cat                                    = $this->categoryRepository->get($cat->parentCategoryId, $this->sessionStorageService->getLang());
+			$cat                                    = $this->categoryRepository->get($cat->parentCategoryId, $lang);
 		}
-	    $this->track("setCurrentCategory");
-	}
+		$this->track("setCurrentCategory");
 
+    }
+    
     /**
      * @return Category
      */
@@ -115,9 +119,14 @@ class CategoryService
         {
             $lang = $this->sessionStorageService->getLang();
         }
-		$category = $this->categoryRepository->get($catID, $lang);
-	    $this->track("get");
+        $category = $this->fromMemoryCache(
+            "category.$catID.$lang",
+            function() use ($catID, $lang) {
+                return $this->categoryRepository->get($catID, $lang);
+            }
+        );
 
+	    $this->track("get");
 	    return $category;
 	}
 
@@ -129,16 +138,22 @@ class CategoryService
             $lang = $this->sessionStorageService->getLang();
         }
 
-        $result = null;
-        if($categoryId > 0)
-        {
-            $result = $this->categoryRepository->getChildren($categoryId, $lang);
-        }
-        $this->track("getChildren");
+        $children = $this->fromMemoryCache(
+            "categoryChildren.$categoryId.$lang",
+            function() use ($categoryId, $lang) {
+                if($categoryId > 0)
+                {
+                    return $this->categoryRepository->getChildren($categoryId, $lang);
+                }
 
-        return $result;
+                return null;
+            }
+        );
+
+        $this->track("getChildren");
+        return $children;
     }
-	
+
 	/**
 	 * Return the URL for a given category ID.
 	 * @param Category $category the category to get the URL for
@@ -153,14 +168,19 @@ class CategoryService
             $lang = $this->sessionStorageService->getLang();
         }
 
-		if(!$category instanceof Category || $category->details[0] === null)
-		{
-			return null;
-		}
-		$url = "/" . $this->categoryRepository->getUrl($category->id, $lang);
-	    $this->track("getURL");
+        $categoryUrl = $this->fromMemoryCache(
+            "categoryUrl.$category->id.$lang",
+            function() use ($category, $lang) {
+                if(!$category instanceof Category || $category->details[0] === null)
+                {
+                    return null;
+                }
+                return "/" . $this->categoryRepository->getUrl($category->id, $lang);
+            }
+        );
 
-	    return $url;
+	    $this->track("getURL");
+        return $categoryUrl;
 	}
 
     /**
@@ -199,15 +219,11 @@ class CategoryService
 	 */
 	public function isCurrent(Category $category):bool
 	{
-	    $this->start("isCurrent");
 		if($this->currentCategory === null)
 		{
 			return false;
 		}
-		$isCurrent = $this->currentCategory->id === $category->id;
-	    $this->track("isCurrent");
-
-	    return $isCurrent;
+		return $this->currentCategory->id === $category->id;
 	}
 
 	/**
@@ -217,10 +233,8 @@ class CategoryService
 	 */
 	public function isOpen(Category $category):bool
 	{
-	    $this->start("isOpen");
 		if($this->currentCategory === null)
 		{
-	        $this->track("isOpen");
 			return false;
 		}
 
@@ -228,12 +242,9 @@ class CategoryService
 		{
 			if($categoryBranch->id === $category->id)
 			{
-	            $this->track("isOpen");
 				return true;
 			}
 		}
-
-        $this->track("isOpen");
 		return false;
 	}
 
@@ -244,18 +255,14 @@ class CategoryService
 	 */
 	public function isActive(Category $category = null):bool
 	{
-	    $this->start("isActive");
-        $isActive = $category !== null && ($this->isCurrent($category) || $this->isOpen($category));
-	    $this->track("isActive");
-
-        return $isActive;
+        return $category !== null && ($this->isCurrent($category) || $this->isOpen($category));
 	}
 
     /**
      * @param Category $category
      * @param array $params
      * @param int $page
-     * @return null|array
+     * @return null|PaginatedResult
      */
     public function getItems( $category = null, array $params = [], int $page = 1 )
     {
@@ -267,7 +274,6 @@ class CategoryService
 
         if( $category == null || $params == null )
         {
-            $this->track("getItems");
             return null;
         }
 
@@ -275,10 +281,10 @@ class CategoryService
          * @var ItemService $itemService
          */
         $itemService = pluginApp(ItemService::class);
-        $result = $itemService->getItemForCategory( $category->id, $params, $page );
+        $items = $itemService->getItemForCategory( $category->id, $params, $page );
         $this->track("getItems");
 
-        return $result;
+        return $items;
     }
 
     /**
@@ -352,7 +358,7 @@ class CategoryService
         {
             $hierarchy = array_reverse( $hierarchy );
         }
-
+    
         if(count($this->currentItem))
         {
             $lang = pluginApp( SessionStorageService::class )->getLang();
@@ -360,14 +366,13 @@ class CategoryService
         }
 
         $this->track("getHierarchy");
+
         return $hierarchy;
     }
 
     public function setCurrentItem($item)
     {
-        $this->start("setCurrentItem");
         $this->currentItem = $item;
-        $this->track("setCurrentItem");
     }
 
     public function getCurrentItem()

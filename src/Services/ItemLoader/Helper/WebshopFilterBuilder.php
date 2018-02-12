@@ -2,6 +2,7 @@
 
 namespace IO\Services\ItemLoader\Helper;
 
+use IO\Helper\MemoryCache;
 use IO\Helper\RuntimeTracker;
 use IO\Services\PriceDetectService;
 use IO\Services\SessionStorageService;
@@ -15,114 +16,128 @@ use Plenty\Plugin\Application;
 
 class WebshopFilterBuilder implements FilterBuilder
 {
+    use MemoryCache;
     use RuntimeTracker;
 
     public function getFilters($options):array
     {
         $this->start("getFilters");
-        /** @var ClientFilter $clientFilter */
-        $clientFilter = pluginApp(ClientFilter::class);
-        $clientFilter->isVisibleForClient(pluginApp(Application::class)->getPlentyId());
-    
-        /** @var VariationBaseFilter $variationFilter */
-        $variationFilter = pluginApp(VariationBaseFilter::class);
-        $variationFilter->isActive();
-        $variationFilter->isHiddenInCategoryList(false);
-    
-        if(isset($options['useVariationShowType']) && $options['useVariationShowType'])
-        {
-            $variationShowType = $this->getVariationShowType($options);
-            if(strlen($variationShowType) && $variationShowType !== 'combined')
-            {
-                if($variationShowType == 'main')
+        $filters = $this->fromMemoryCache(
+            "webshopFilters",
+            function() use ($options) {
+
+                /** @var ClientFilter $clientFilter */
+                $clientFilter = pluginApp(ClientFilter::class);
+                $clientFilter->isVisibleForClient(pluginApp(Application::class)->getPlentyId());
+
+                /** @var VariationBaseFilter $variationFilter */
+                $variationFilter = pluginApp(VariationBaseFilter::class);
+                $variationFilter->isActive();
+                $variationFilter->isHiddenInCategoryList(false);
+
+                if(isset($options['useVariationShowType']) && $options['useVariationShowType'])
                 {
-                    $variationFilter->isMain();
+                    $variationShowType = $this->getVariationShowType($options);
+                    if(strlen($variationShowType) && $variationShowType !== 'combined')
+                    {
+                        if($variationShowType == 'main')
+                        {
+                            $variationFilter->isMain();
+                        }
+                        elseif($variationShowType == 'child')
+                        {
+                            $variationFilter->isChild();
+                        }
+                    }
                 }
-                elseif($variationShowType == 'child')
+
+                $sessionLang = pluginApp(SessionStorageService::class)->getLang();
+
+                $langMap = [
+                    'de' => TextFilter::LANG_DE,
+                    'fr' => TextFilter::LANG_FR,
+                    'en' => TextFilter::LANG_EN,
+                ];
+
+                /**
+                 * @var TextFilter $textFilter
+                 */
+                $textFilter = pluginApp(TextFilter::class);
+
+                if(isset($langMap[$sessionLang]))
                 {
-                    $variationFilter->isChild();
+                    $textFilterLanguage = $langMap[$sessionLang];
+
+                    /**
+                     * @var TemplateConfigService $templateConfigService
+                     */
+                    $templateConfigService = pluginApp(TemplateConfigService::class);
+                    $usedItemName = $templateConfigService->get('item.name');
+
+                    $textFilterType = TextFilter::FILTER_ANY_NAME;
+                    if(strlen($usedItemName))
+                    {
+                        if($usedItemName == '0')
+                        {
+                            $textFilterType = TextFilter::FILTER_NAME_1;
+                        }
+                        elseif($usedItemName == '1')
+                        {
+                            $textFilterType = TextFilter::FILTER_NAME_2;
+                        }
+                        elseif($usedItemName == '2')
+                        {
+                            $textFilterType = TextFilter::FILTER_NAME_3;
+                        }
+                    }
+
+                    $textFilter->hasNameInLanguage($textFilterLanguage, $textFilterType);
                 }
+
+                /**
+                 * @var PriceDetectService $priceDetectService
+                 */
+                $priceDetectService = pluginApp(PriceDetectService::class);
+                $priceIds = $priceDetectService->getPriceIdsForCustomer();
+
+                /**
+                 * @var SalesPriceFilter $priceFilter
+                 */
+                $priceFilter = pluginApp(SalesPriceFilter::class);
+                $priceFilter->hasAtLeastOnePrice($priceIds);
+
+                return [
+                    $clientFilter,
+                    $variationFilter,
+                    $textFilter,
+                    $priceFilter,
+                ];
+
             }
-        }
-    
-        $sessionLang = pluginApp(SessionStorageService::class)->getLang();
-    
-        $langMap = [
-            'de' => TextFilter::LANG_DE,
-            'fr' => TextFilter::LANG_FR,
-            'en' => TextFilter::LANG_EN,
-        ];
-    
-        /**
-         * @var TextFilter $textFilter
-         */
-        $textFilter = pluginApp(TextFilter::class);
-    
-        if(isset($langMap[$sessionLang]))
-        {
-            $textFilterLanguage = $langMap[$sessionLang];
-        
-            /**
-             * @var TemplateConfigService $templateConfigService
-             */
-            $templateConfigService = pluginApp(TemplateConfigService::class);
-            $usedItemName = $templateConfigService->get('item.name');
-        
-            $textFilterType = TextFilter::FILTER_ANY_NAME;
-            if(strlen($usedItemName))
-            {
-                if($usedItemName == '0')
-                {
-                    $textFilterType = TextFilter::FILTER_NAME_1;
-                }
-                elseif($usedItemName == '1')
-                {
-                    $textFilterType = TextFilter::FILTER_NAME_2;
-                }
-                elseif($usedItemName == '2')
-                {
-                    $textFilterType = TextFilter::FILTER_NAME_3;
-                }
-            }
-        
-            $textFilter->hasNameInLanguage($textFilterLanguage, $textFilterType);
-        }
-    
-        /**
-         * @var PriceDetectService $priceDetectService
-         */
-        $priceDetectService = pluginApp(PriceDetectService::class);
-        $priceIds = $priceDetectService->getPriceIdsForCustomer();
-    
-        /**
-         * @var SalesPriceFilter $priceFilter
-         */
-        $priceFilter = pluginApp(SalesPriceFilter::class);
-        $priceFilter->hasAtLeastOnePrice($priceIds);
+        );
 
         $this->track("getFilters");
 
-        return [
-            $clientFilter,
-            $variationFilter,
-            $textFilter,
-            $priceFilter,
-        ];
+        return $filters;
     }
     
     public function getCollapseForCombinedVariations($options)
     {
+        $this->start("getCollapseforCombinedVariations");
         $variationShowType = $this->getVariationShowType($options);
+        $collapse = null;
         if(strlen($variationShowType) && $variationShowType == 'combined')
         {
-            return pluginApp(BaseCollapse::class, ['ids.itemId']);
+            $collapse = pluginApp(BaseCollapse::class, ['ids.itemId']);
         }
-        
-        return null;
+
+        $this->track("getCollapseforCombinedVariations");
+        return $collapse;
     }
     
     private function getVariationShowType($options)
     {
+        $this->start("getVariationShowType");
         $variationShowType = '';
         if(isset($options['variationShowType']) && strlen($options['variationShowType']))
         {
@@ -134,7 +149,8 @@ class WebshopFilterBuilder implements FilterBuilder
             $templateConfigService = pluginApp(TemplateConfigService::class);
             $variationShowType = $templateConfigService->get('item.variation_show_type', '');
         }
-        
+
+        $this->track("getVariationShowType");
         return $variationShowType;
     }
 }
