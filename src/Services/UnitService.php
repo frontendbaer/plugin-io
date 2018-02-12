@@ -23,6 +23,8 @@ class UnitService
 	 */
 	private $unitNameRepository;
 
+	private $defaultLang;
+
     /**
      * UnitService constructor.
      * @param UnitNameRepositoryContract $unitRepository
@@ -31,6 +33,7 @@ class UnitService
 	{
 	    $this->start("constructor");
 		$this->unitNameRepository = $unitRepository;
+		$this->defaultLang = pluginApp(SessionStorageService::class)->getLang();
 	    $this->track("constructor");
 	}
 
@@ -54,7 +57,7 @@ class UnitService
         $this->start("getUnitNameByKey");
         if ( $lang === null )
         {
-            $lang = pluginApp(SessionStorageService::class)->getLang();
+            $lang = $this->defaultLang;
         }
 
         $unitName = $this->fromMemoryCache(

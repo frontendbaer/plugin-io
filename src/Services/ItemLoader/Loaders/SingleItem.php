@@ -2,15 +2,19 @@
 namespace IO\Services\ItemLoader\Loaders;
 
 use IO\Helper\RuntimeTracker;
+use IO\Services\ItemLoader\Helper\WebshopFilterBuilder;
 use IO\Services\SessionStorageService;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\TemplateConfigService;
 use IO\Services\PriceDetectService;
+use Plenty\Modules\Cloud\ElasticSearch\Lib\Collapse\BaseCollapse;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Processor\DocumentProcessor;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Query\Type\TypeInterface;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Search\Document\DocumentSearch;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Search\SearchInterface;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Source\Mutator\BuiltIn\LanguageMutator;
+use Plenty\Modules\Item\Search\Aggregations\ItemCardinalityAggregation;
+use Plenty\Modules\Item\Search\Aggregations\ItemCardinalityAggregationProcessor;
 use Plenty\Modules\Item\Search\Mutators\ImageMutator;
 use Plenty\Modules\Item\Search\Filter\ClientFilter;
 use Plenty\Modules\Item\Search\Filter\VariationBaseFilter;
@@ -47,10 +51,21 @@ class SingleItem implements ItemLoaderContract
         $documentProcessor = pluginApp(DocumentProcessor::class);
         $documentProcessor->addMutator($languageMutator);
         $documentProcessor->addMutator($imageMutator);
-
+        
+        $documentSearch = pluginApp(DocumentSearch::class, [$documentProcessor]);
+        
+        /** @var WebshopFilterBuilder $webshopFilterBuilder */
+        $webshopFilterBuilder = pluginApp(WebshopFilterBuilder::class);
+        $collapse = $webshopFilterBuilder->getCollapseForCombinedVariations($this->options);
+        if($collapse instanceof BaseCollapse)
+        {
+            $documentSearch->setCollapse($collapse);
+            $counterAggreation = pluginApp(ItemCardinalityAggregation::class, [pluginApp(ItemCardinalityAggregationProcessor::class)]);
+            $documentSearch->addAggregation($counterAggreation);
+        }
         $this->track("getSearch");
 
-        return pluginApp(DocumentSearch::class, [$documentProcessor]);
+        return $documentSearch;
 	}
     
     /**
@@ -68,7 +83,12 @@ class SingleItem implements ItemLoaderContract
 	 */
 	public function getFilterStack($options = [])
 	{
-	    $this->start("getFilterStack" );
+	    $this->start("getFilterStack");
+        /**
+         * @var TemplateConfigService $templateConfigService
+         */
+        $templateConfigService = pluginApp(TemplateConfigService::class);
+	    
 		/** @var ClientFilter $clientFilter */
 		$clientFilter = pluginApp(ClientFilter::class);
 		$clientFilter->isVisibleForClient(pluginApp(Application::class)->getPlentyId());
@@ -88,7 +108,15 @@ class SingleItem implements ItemLoaderContract
         }
         else
         {
-            $variationFilter->isMain();
+            $variationShowType = $templateConfigService->get('item.variation_show_type');
+            if($variationShowType == 'main')
+            {
+                $variationFilter->isMain();
+            }
+            elseif($variationShowType == 'child')
+            {
+                $variationFilter->isChild();
+            }
         }
         
         $sessionLang =  $options['lang'];
@@ -112,10 +140,6 @@ class SingleItem implements ItemLoaderContract
         {
             $textFilterLanguage = $langMap[$sessionLang];
             
-            /**
-             * @var TemplateConfigService $templateConfigService
-             */
-            $templateConfigService = pluginApp(TemplateConfigService::class);
             $usedItemName = $templateConfigService->get('item.name');
             
             $textFilterType = TextFilter::FILTER_ANY_NAME;
@@ -150,7 +174,7 @@ class SingleItem implements ItemLoaderContract
         $priceFilter = pluginApp(SalesPriceFilter::class);
         $priceFilter->hasAtLeastOnePrice($priceIds);
 
-        $this->track("getFilterStack" );
+        $this->track("getFilterStack");
 
         return [
 			$clientFilter,
@@ -162,6 +186,7 @@ class SingleItem implements ItemLoaderContract
     
     public function setOptions($options = [])
     {
+        $options['useVariationShowType'] = true;
         $this->options = $options;
         return $options;
     }
