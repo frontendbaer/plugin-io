@@ -2,6 +2,8 @@
 
 namespace IO\Services\ItemLoader\Loaders;
 
+use IO\Helper\MemoryCache;
+use IO\Helper\RuntimeTracker;
 use IO\Services\ItemLoader\Contracts\FacetExtension;
 use IO\Services\ItemLoader\Helper\FacetFilterBuilder;
 use IO\Services\ItemLoader\Helper\WebshopFilterBuilder;
@@ -30,6 +32,9 @@ use Plenty\Modules\Cloud\ElasticSearch\Lib\Collapse\BaseCollapse;
  */
 class CategoryItems implements ItemLoaderContract, ItemLoaderPaginationContract, ItemLoaderSortingContract
 {
+    use RuntimeTracker;
+    use MemoryCache;
+
     private $options = [];
     
     /** @var  WebshopFilterBuilder */
@@ -45,6 +50,7 @@ class CategoryItems implements ItemLoaderContract, ItemLoaderPaginationContract,
 	 */
 	public function getSearch()
 	{
+	    $this->start("getSearch");
         $languageMutator = pluginApp(LanguageMutator::class, ["languages" => [pluginApp(SessionStorageService::class)->getLang()]]);
         $imageMutator = pluginApp(ImageMutator::class);
         $imageMutator->addClient(pluginApp(Application::class)->getPlentyId());
@@ -63,7 +69,9 @@ class CategoryItems implements ItemLoaderContract, ItemLoaderPaginationContract,
             $counterAggreation = pluginApp(ItemCardinalityAggregation::class, [pluginApp(ItemCardinalityAggregationProcessor::class)]);
             $documentSearch->addAggregation($counterAggreation);
         }
-        
+
+        $this->track("getSearch");
+
         return $documentSearch;
 	}
     
@@ -75,6 +83,7 @@ class CategoryItems implements ItemLoaderContract, ItemLoaderPaginationContract,
      */
     public function getAggregations()
     {
+        $this->start("getAggregations");
         /** @var FacetExtensionContainer $facetExtensionContainer */
         $facetExtensionContainer = pluginApp(FacetExtensionContainer::class);
         
@@ -84,7 +93,9 @@ class CategoryItems implements ItemLoaderContract, ItemLoaderPaginationContract,
                 $aggregations[] = $facetExtension->getAggregation();
             }
         }
-        
+
+        $this->track("getAggregations");
+
         return $aggregations;
     }
 
@@ -132,6 +143,7 @@ class CategoryItems implements ItemLoaderContract, ItemLoaderPaginationContract,
 	
 	public function getSorting($options = [])
     {
+        $this->start("getSorting");
         $sortingInterface = null;
 
         if(isset($options['sorting']) && strlen($options['sorting']))
@@ -147,7 +159,9 @@ class CategoryItems implements ItemLoaderContract, ItemLoaderPaginationContract,
             }
 
         }
-       
+
+        $this->track("getSorting");
+
         return $sortingInterface;
     }
     

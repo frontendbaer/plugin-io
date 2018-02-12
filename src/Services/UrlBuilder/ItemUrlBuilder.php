@@ -2,14 +2,18 @@
 
 namespace IO\Services\UrlBuilder;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\ItemLoader\Loaders\ItemURLs;
 use IO\Services\ItemLoader\Services\ItemLoaderService;
 use IO\Services\SessionStorageService;
 
 class ItemUrlBuilder
 {
+    use RuntimeTracker;
+
     public function buildUrl(int $itemId, string $lang = null )
     {
+        $this->start("buildUrl");
         if ( $lang === null )
         {
             $lang = pluginApp( SessionStorageService::class )->getLang();
@@ -33,6 +37,7 @@ class ItemUrlBuilder
             return $variationUrlBuilder->buildUrl( $itemId, $variationId, $lang );
         }
 
+        $this->track("buildUrl");
         return pluginApp( UrlQuery::class, ['path' => $itemId, 'lang' => $lang]);
     }
 

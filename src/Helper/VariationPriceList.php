@@ -22,6 +22,7 @@ use Plenty\Plugin\CachingRepository;
 class VariationPriceList
 {
     use MemoryCache;
+    use RuntimeTracker;
 
     const TYPE_DEFAULT          = 'default';
     const TYPE_RRP              = 'rrp';
@@ -50,8 +51,10 @@ class VariationPriceList
 
     public function __construct( NumberFormatFilter $numberFormatFilter, UnitService $unitService )
     {
+        $this->start("constructor");
         $this->numberFormatFilter = $numberFormatFilter;
         $this->unitService = $unitService;
+        $this->track("constructor");
     }
 
     public static function create( int $variationId, $minimumOrderQuantity = 0, $maximumOrderQuantity = null, $lot = 0, $unit = null )
@@ -64,6 +67,7 @@ class VariationPriceList
         /** @var VariationPriceList $instance */
         $instance = pluginApp( VariationPriceList::class);
 
+        $instance->start("create");
         $instance->init( $variationId, $minimumOrderQuantity, $maximumOrderQuantity, $lot, $unit );
 
         // check if default price for minimum order quantity exists
@@ -80,11 +84,13 @@ class VariationPriceList
             }
             $instance->minimumOrderQuantity = $minimumGraduatedQuantity;
         }
+        $instance->track("create");
         return $instance;
     }
 
     public function findPriceForQuantity( float $quantity, $type = self::TYPE_DEFAULT )
     {
+        $this->start("findPriceForQuantity");
         $result = null;
         $minimumOrderQuantity = -1.0;
         if ( array_key_exists( $type, $this->prices ) )
@@ -98,11 +104,13 @@ class VariationPriceList
                 }
             }
         }
+        $this->track("findPriceForQuantity");
         return $result;
     }
 
     public function getGraduatedPrices( $showNetPrice = false )
     {
+        $this->start("getGraduatedPrices");
         $graduatedPrices = [];
 
         foreach($this->prices[self::TYPE_DEFAULT] as $price )
@@ -113,11 +121,13 @@ class VariationPriceList
             }
         }
 
+        $this->track("getGraduatedPrices");
         return $graduatedPrices;
     }
 
     public function getBasePrice( $unitPrice, $currency, $lang = null )
     {
+        $this->start("getBasePrice");
         /** @var SalesPriceService $basePriceService */
         $basePriceService = pluginApp( SalesPriceService::class );
         $basePriceString = '';
@@ -132,11 +142,13 @@ class VariationPriceList
             $basePriceString = $this->numberFormatFilter->formatMonetary($basePrice['price'], $currency).' / '.($basePrice['lot'] > 1 ? $basePrice['lot'].' ' : '').$unitName;
         }
 
+        $this->track("getBasePrice");
         return $basePriceString;
     }
 
     public function toArray( $quantity = null )
     {
+        $this->start("toArray");
         if ( $quantity === null )
         {
             $quantity = $this->minimumOrderQuantity;
@@ -150,16 +162,21 @@ class VariationPriceList
         $rrp            = $this->findPriceForQuantity( $quantity, self::TYPE_RRP );
         $specialOffer   = $this->findPriceForQuantity( $quantity, self::TYPE_SPECIAL_OFFER );
 
-        return [
+
+        $result = [
             'default'           => $this->preparePrice( $defaultPrice, $showNetPrice ),
             'rrp'               => $this->preparePrice( $rrp, $showNetPrice ),
             'specialOffer'      => $this->preparePrice( $specialOffer, $showNetPrice ),
             'graduatedPrices'   => $this->getGraduatedPrices( $showNetPrice )
         ];
+        $this->track("toArray");
+
+        return $result;
     }
 
     public function getCalculatedPrices( $quantity = null )
     {
+        $this->start("getCalculatedPrices");
         if ( $quantity === null )
         {
             $quantity = $this->minimumOrderQuantity;
@@ -183,7 +200,7 @@ class VariationPriceList
             }
         }
 
-        return [
+        $result = [
             'default' => $defaultPrice,
             'formatted' => [
                 'basePrice' => $this->getBasePrice( $defaultPrice->unitPrice, $defaultPrice->currency ),
@@ -196,10 +213,16 @@ class VariationPriceList
             'rrp' => $rrp,
             'specialOffer' => $specialOffer
         ];
+
+        $this->track("getCalculatedPrices");
+
+        return $result;
+
     }
 
     private function init( $variationId, $minimumOrderQuantity, $maximumOrderQuantity, $lot, $unit )
     {
+        $this->start("init");
         $this->variationId          = $variationId;
         $this->minimumOrderQuantity = $minimumOrderQuantity;
         $this->maximumOrderQuantity = $maximumOrderQuantity;
@@ -232,11 +255,13 @@ class VariationPriceList
             self::TYPE_SPECIAL_OFFER
         );
 
+        $this->track("init");
 
     }
 
     private function fetchPrices( $prices, $type )
     {
+        $this->start("fetchPrices");
         $quantities = [];
         $this->prices[$type] = [];
         foreach( $prices as $price )
@@ -249,10 +274,12 @@ class VariationPriceList
                 $quantities[] = $price->minimumOrderQuantity;
             }
         }
+        $this->track("fetchPrices");
     }
 
     private function getSearchRequest( int $variationId, string $type = self::TYPE_DEFAULT, float $quantity = 0 )
     {
+        $this->start("getSearchRequest");
         /** @var SalesPriceSearchRequest $salesPriceSearchRequest */
         $salesPriceSearchRequest = $this->fromMemoryCache(
             "salesPriceRequest",
@@ -293,17 +320,19 @@ class VariationPriceList
         $salesPriceSearchRequest->variationId = $variationId;
         $salesPriceSearchRequest->quantity    = $quantity;
         $salesPriceSearchRequest->type        = $type;
+        $this->track("getSearchRequest");
         return $salesPriceSearchRequest;
     }
 
     private function preparePrice( $price, $showNetPrice = false )
     {
+        $this->start("preparePrice");
         if ( $price === null )
         {
             return null;
         }
 
-        return [
+        $result = [
             'price'                 => [
                 'value'     => $showNetPrice ? $price->priceNet : $price->price,
                 'formatted' => $this->numberFormatFilter->formatMonetary( $showNetPrice ? $price->priceNet : $price->price, $price->currency )
@@ -330,5 +359,8 @@ class VariationPriceList
             'isNet'                 => $showNetPrice,
             'data'                  => $price
         ];
+        $this->track("preparePrice");
+
+        return $result;
     }
 }

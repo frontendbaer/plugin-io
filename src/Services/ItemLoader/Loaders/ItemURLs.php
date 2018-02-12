@@ -2,6 +2,7 @@
 
 namespace IO\Services\ItemLoader\Loaders;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\ItemLoader\Contracts\ItemLoaderPaginationContract;
 use IO\Services\ItemLoader\Contracts\ItemLoaderSortingContract;
@@ -15,6 +16,8 @@ use Plenty\Modules\Cloud\ElasticSearch\Lib\Source\Mutator\BuiltIn\LanguageMutato
 
 class ItemURLs implements ItemLoaderContract, ItemLoaderPaginationContract, ItemLoaderSortingContract
 {
+    use RuntimeTracker;
+
     private $options;
 
     /**
@@ -22,6 +25,7 @@ class ItemURLs implements ItemLoaderContract, ItemLoaderPaginationContract, Item
      */
     public function getSearch()
     {
+        $this->start("getSearch");
         /** @var WebstoreConfigurationService $webstoreConfigService */
         $webstoreConfigService = pluginApp( WebstoreConfigurationService::class );
 
@@ -33,7 +37,11 @@ class ItemURLs implements ItemLoaderContract, ItemLoaderPaginationContract, Item
         $documentProcessor = pluginApp( DocumentProcessor::class );
         $documentProcessor->addMutator( $languageMutator );
 
-        return pluginApp( DocumentSearch::class, [$documentProcessor] );
+        $document = pluginApp( DocumentSearch::class, [$documentProcessor] );
+        $this->track("getSearch");
+
+        return $document;
+
     }
 
     /**
@@ -50,7 +58,10 @@ class ItemURLs implements ItemLoaderContract, ItemLoaderPaginationContract, Item
      */
     public function getFilterStack($options = [])
     {
-        return $this->getPrimaryLoader()->getFilterStack($this->options);
+        $this->start("getFilterStack");
+        $stack = $this->getPrimaryLoader()->getFilterStack($this->options);
+        $this->track("getFilterStack");
+        return $stack;
     }
 
     /**

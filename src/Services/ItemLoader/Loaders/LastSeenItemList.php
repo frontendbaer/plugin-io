@@ -3,6 +3,7 @@
 namespace IO\Services\ItemLoader\Loaders;
 
 use IO\Constants\SessionStorageKeys;
+use IO\Helper\RuntimeTracker;
 use IO\Services\SessionStorageService;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Builder\Sorting\SortingBuilder;
@@ -24,6 +25,8 @@ use Plenty\Plugin\Application;
  */
 class LastSeenItemList implements ItemLoaderContract
 {
+    use RuntimeTracker;
+
     private $options = [];
     
     /**
@@ -31,6 +34,7 @@ class LastSeenItemList implements ItemLoaderContract
      */
     public function getSearch()
     {
+        $this->start("getSearch");
         $languageMutator = pluginApp(LanguageMutator::class, ["languages" => [pluginApp(SessionStorageService::class)->getLang()]]);
         $imageMutator = pluginApp(ImageMutator::class);
         $imageMutator->addClient(pluginApp(Application::class)->getPlentyId());
@@ -39,7 +43,11 @@ class LastSeenItemList implements ItemLoaderContract
         $documentProcessor->addMutator($languageMutator);
         $documentProcessor->addMutator($imageMutator);
     
-        return pluginApp(DocumentSearch::class, [$documentProcessor]);
+        $document = pluginApp(DocumentSearch::class, [$documentProcessor]);
+        $this->track("getSearch");
+
+        return $document;
+
     }
     
     /**
@@ -56,6 +64,7 @@ class LastSeenItemList implements ItemLoaderContract
      */
     public function getFilterStack($options = [])
     {
+        $this->start("getFilterStack");
         /** @var ClientFilter $clientFilter */
         $clientFilter = pluginApp(ClientFilter::class);
         $clientFilter->isVisibleForClient(pluginApp(Application::class)->getPlentyId());
@@ -74,7 +83,9 @@ class LastSeenItemList implements ItemLoaderContract
         {
             $variationFilter->hasIds($variationIds);
         }
-        
+
+        $this->track("getFilterStack");
+
         return [
             $clientFilter,
             $variationFilter

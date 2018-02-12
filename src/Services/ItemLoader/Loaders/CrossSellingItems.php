@@ -2,6 +2,7 @@
 namespace IO\Services\ItemLoader\Loaders;
 
 use IO\Constants\CrossSellingType;
+use IO\Helper\RuntimeTracker;
 use IO\Services\SessionStorageService;
 use IO\Services\ItemCrossSellingService;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
@@ -25,6 +26,8 @@ use Plenty\Modules\Item\Search\Filter\SalesPriceFilter;
  */
 class CrossSellingItems implements ItemLoaderContract
 {
+    use RuntimeTracker;
+
     private $options = [];
     
     /**
@@ -32,12 +35,17 @@ class CrossSellingItems implements ItemLoaderContract
      */
     public function getSearch()
     {
+        $this->start("getSearch");
         $languageMutator = pluginApp(LanguageMutator::class, ["languages" => [pluginApp(SessionStorageService::class)->getLang()]]);
         
         $documentProcessor = pluginApp(DocumentProcessor::class);
         $documentProcessor->addMutator($languageMutator);
         
-        return pluginApp(DocumentSearch::class, [$documentProcessor]);
+        $document = pluginApp(DocumentSearch::class, [$documentProcessor]);
+        $this->track("getSearch");
+
+        return $document;
+
     }
     
     /**
@@ -55,6 +63,7 @@ class CrossSellingItems implements ItemLoaderContract
      */
     public function getFilterStack($options = [])
     {
+        $this->start("getFilterStack");
         /** @var ClientFilter $clientFilter */
         $clientFilter = pluginApp(ClientFilter::class);
         $clientFilter->isVisibleForClient(pluginApp(Application::class)->getPlentyId());
@@ -144,7 +153,8 @@ class CrossSellingItems implements ItemLoaderContract
         {
             $filters[] = $crossSellingFilter;
         }
-        
+        $this->track("getFilterStack");
+
         return $filters;
     }
     

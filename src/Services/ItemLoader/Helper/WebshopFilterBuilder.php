@@ -2,6 +2,7 @@
 
 namespace IO\Services\ItemLoader\Helper;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\PriceDetectService;
 use IO\Services\SessionStorageService;
 use IO\Services\TemplateConfigService;
@@ -14,8 +15,11 @@ use Plenty\Plugin\Application;
 
 class WebshopFilterBuilder implements FilterBuilder
 {
+    use RuntimeTracker;
+
     public function getFilters($options):array
     {
+        $this->start("getFilters");
         /** @var ClientFilter $clientFilter */
         $clientFilter = pluginApp(ClientFilter::class);
         $clientFilter->isVisibleForClient(pluginApp(Application::class)->getPlentyId());
@@ -95,7 +99,9 @@ class WebshopFilterBuilder implements FilterBuilder
          */
         $priceFilter = pluginApp(SalesPriceFilter::class);
         $priceFilter->hasAtLeastOnePrice($priceIds);
-    
+
+        $this->track("getFilters");
+
         return [
             $clientFilter,
             $variationFilter,

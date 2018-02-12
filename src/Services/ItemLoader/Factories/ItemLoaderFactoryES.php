@@ -3,6 +3,7 @@ namespace IO\Services\ItemLoader\Factories;
 
 use IO\Extensions\Filters\NumberFormatFilter;
 use IO\Helper\DefaultSearchResult;
+use IO\Helper\RuntimeTracker;
 use IO\Services\CheckoutService;
 use IO\Helper\VariationPriceList;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
@@ -28,6 +29,8 @@ use Plenty\Plugin\ConfigRepository;
  */
 class ItemLoaderFactoryES implements ItemLoaderFactory
 {
+    use RuntimeTracker;
+
     /**
      * @var FacetExtensionContainer
      */
@@ -50,6 +53,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
      */
     public function runSearch($loaderClassList, $resultFields,  $options = [])
     {
+        $this->start("runSearch");
         $result = [];
 
         $isMultiSearch = false;
@@ -76,6 +80,9 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
         $result = $this->attachPrices($result, $options);
         $result = $this->attachItemWishList($result);
         $result = $this->attachURLs($result);
+
+
+        $this->track("runSearch");
 
         return $result;
     }

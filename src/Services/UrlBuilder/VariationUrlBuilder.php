@@ -2,6 +2,7 @@
 
 namespace IO\Services\UrlBuilder;
 
+use IO\Helper\RuntimeTracker;
 use IO\Helper\StringUtils;
 use IO\Services\ItemLoader\Loaders\ItemURLs;
 use IO\Services\ItemLoader\Loaders\SingleItem;
@@ -13,6 +14,8 @@ use Plenty\Modules\Item\VariationDescription\Contracts\VariationDescriptionRepos
 
 class VariationUrlBuilder
 {
+    use RuntimeTracker;
+
     public static $urlPathMap;
 
     public static function fillItemUrl( $itemData )
@@ -65,6 +68,7 @@ class VariationUrlBuilder
      */
     public function buildUrl(int $itemId, int $variationId, string $lang = null ): UrlQuery
     {
+        $this->start("buildUrl");
         $itemUrl = $this->buildUrlQuery( null, $lang );
 
         if ( $lang === null )
@@ -129,6 +133,7 @@ class VariationUrlBuilder
                 }
             }
         }
+        $this->track("buildUrl");
 
         return $itemUrl;
     }

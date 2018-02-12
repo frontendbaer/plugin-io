@@ -2,6 +2,7 @@
 
 namespace IO\Services\ItemLoader\Loaders;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\ItemLoader\Contracts\FacetExtension;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\ItemLoader\Contracts\ItemLoaderPaginationContract;
@@ -28,6 +29,8 @@ use Plenty\Modules\Cloud\ElasticSearch\Lib\ElasticSearch;
 
 class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, ItemLoaderSortingContract
 {
+    use RuntimeTracker;
+
     private $options = [];
     
     /** @var  WebshopFilterBuilder */
@@ -43,6 +46,7 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
      */
     public function getSearch()
     {
+        $this->start("getSearch");
         $languageMutator = pluginApp(LanguageMutator::class, ["languages" => [pluginApp(SessionStorageService::class)->getLang()]]);
         $imageMutator = pluginApp(ImageMutator::class);
         $imageMutator->addClient(pluginApp(Application::class)->getPlentyId());
@@ -61,7 +65,9 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
             $counterAggreation = pluginApp(ItemCardinalityAggregation::class, [pluginApp(ItemCardinalityAggregationProcessor::class)]);
             $documentSearch->addAggregation($counterAggreation);
         }
-        
+
+        $this->track("getSearch");
+
         return $documentSearch;
     }
     
@@ -70,6 +76,7 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
      */
     public function getAggregations()
     {
+        $this->start("getAggregations");
         /** @var FacetExtensionContainer $facetExtensionContainer */
         $facetExtensionContainer = pluginApp(FacetExtensionContainer::class);
     
@@ -79,7 +86,9 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
                 $aggregations[] = $facetExtension->getAggregation();
             }
         }
-    
+
+        $this->start("getAggregations");
+
         return $aggregations;
     }
     
@@ -90,6 +99,7 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
      */
     public function getFilterStack($options = [])
     {
+        $this->start("getFilterStack");
         $lang = pluginApp(SessionStorageService::class)->getLang();
         
         $filters = [];
@@ -121,7 +131,8 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
         $facetHelper = pluginApp(FacetFilterBuilder::class);
         $facetFilters = $facetHelper->getFilters($options);
         $filters = array_merge( $filters, $facetFilters );
-    
+
+        $this->track("getFilterStack");
         return $filters;
     }
     
@@ -145,6 +156,7 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
     
     public function getSorting($options = [])
     {
+        $this->start("getSorting");
         $sortingInterface = null;
         
         if(isset($options['sorting']) && strlen($options['sorting']))
@@ -166,7 +178,8 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
                 }
             }
         }
-        
+        $this->track("getSorting");
+
         return $sortingInterface;
     }
     

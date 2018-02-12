@@ -3,6 +3,7 @@
 namespace IO\Services\ItemLoader\Loaders;
 
 use IO\Builder\Facet\FacetBuilder;
+use IO\Helper\RuntimeTracker;
 use IO\Services\ItemLoader\Contracts\FacetExtension;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\ItemLoader\Contracts\ItemLoaderPaginationContract;
@@ -36,6 +37,8 @@ use Plenty\Modules\Item\Search\Helper\SearchHelper;
  */
 class Facets implements ItemLoaderContract
 {
+    use RuntimeTracker;
+
     private $options = [];
     
     /**
@@ -57,6 +60,7 @@ class Facets implements ItemLoaderContract
      */
     public function getSearch()
     {
+        $this->start("getSearch");
         $plentyId = pluginApp(Application::class)->getPlentyId();
         $lang = pluginApp(SessionStorageService::class)->getLang();
     
@@ -67,7 +71,9 @@ class Facets implements ItemLoaderContract
         $searchHelper = pluginApp(SearchHelper::class, [$facetValues, $plentyId, 'item', $lang]);
         $facetSearch = $searchHelper->getFacetSearch();
         $facetSearch->setName('facets');
-        
+
+        $this->track("getSearch");
+
         return $facetSearch;
     }
     
@@ -82,6 +88,7 @@ class Facets implements ItemLoaderContract
      */
     public function getFilterStack($options = [])
     {
+        $this->start("getFilterStack");
         $filters = [];
     
         /** @var WebshopFilterBuilder $webshopFilterBuilder */
@@ -118,12 +125,15 @@ class Facets implements ItemLoaderContract
     
             $filters[] = $searchFilter;
         }
-        
+
+        $this->track("getFilterStack");
+
         return $filters;
     }
     
     private function getFacetValues($options)
     {
+        $this->start("getFacetValues");
         if (array_key_exists('facets', $options) && count($options['facets'])) {
             $facetValues   = FacetBuilder::buildFacetValues($options['facets']);
             $activeFilters = explode(',', $options['facets']);
@@ -135,7 +145,9 @@ class Facets implements ItemLoaderContract
             $facetValues   = FacetBuilder::buildFacetValues($request->get('facets', ''));
             $activeFilters = explode(',', $request->get('facets', ''));
         }
-        
+
+        $this->track("getFacetValues");
+
         return [
             'facetValues' => $facetValues,
             'activeFilters' => $activeFilters

@@ -1,6 +1,7 @@
 <?php
 namespace IO\Services\ItemLoader\Loaders;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\SessionStorageService;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\TemplateConfigService;
@@ -24,6 +25,8 @@ use Plenty\Plugin\Application;
  */
 class SingleItem implements ItemLoaderContract
 {
+    use RuntimeTracker;
+
     private $options = [];
     
 	/**
@@ -31,6 +34,7 @@ class SingleItem implements ItemLoaderContract
 	 */
 	public function getSearch()
 	{
+	    $this->start("getSearch");
         $sessionLang =  $this->options['lang'];
         if ( $sessionLang === null )
         {
@@ -43,7 +47,9 @@ class SingleItem implements ItemLoaderContract
         $documentProcessor = pluginApp(DocumentProcessor::class);
         $documentProcessor->addMutator($languageMutator);
         $documentProcessor->addMutator($imageMutator);
-        
+
+        $this->track("getSearch");
+
         return pluginApp(DocumentSearch::class, [$documentProcessor]);
 	}
     
@@ -62,6 +68,7 @@ class SingleItem implements ItemLoaderContract
 	 */
 	public function getFilterStack($options = [])
 	{
+	    $this->start("getFilterStack" );
 		/** @var ClientFilter $clientFilter */
 		$clientFilter = pluginApp(ClientFilter::class);
 		$clientFilter->isVisibleForClient(pluginApp(Application::class)->getPlentyId());
@@ -143,7 +150,9 @@ class SingleItem implements ItemLoaderContract
         $priceFilter = pluginApp(SalesPriceFilter::class);
         $priceFilter->hasAtLeastOnePrice($priceIds);
 
-		return [
+        $this->track("getFilterStack" );
+
+        return [
 			$clientFilter,
 		    $variationFilter,
             $textFilter,

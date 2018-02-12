@@ -2,6 +2,7 @@
 
 namespace IO\Services\ItemLoader\Loaders;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\SessionStorageService;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\TemplateConfigService;
@@ -24,6 +25,8 @@ use Plenty\Plugin\Application;
  */
 class Items implements ItemLoaderContract
 {
+    use RuntimeTracker;
+
     private $options = [];
     
     /**
@@ -31,6 +34,7 @@ class Items implements ItemLoaderContract
      */
     public function getSearch()
     {
+        $this->start("getSearch");
         $sessionLang =  $this->options['lang'];
         if ( $sessionLang === null )
         {
@@ -43,8 +47,11 @@ class Items implements ItemLoaderContract
         $documentProcessor = pluginApp(DocumentProcessor::class);
         $documentProcessor->addMutator($languageMutator);
         $documentProcessor->addMutator($imageMutator);
-    
-        return pluginApp(DocumentSearch::class, [$documentProcessor]);
+
+        $document = pluginApp(DocumentSearch::class, [$documentProcessor]);
+        $this->track("getSearch");
+
+        return $document;
     }
     
     /**
@@ -61,6 +68,7 @@ class Items implements ItemLoaderContract
      */
     public function getFilterStack($options = [])
     {
+        $this->start("getFilterStack");
         /** @var ClientFilter $clientFilter */
         $clientFilter = pluginApp(ClientFilter::class);
         $clientFilter->isVisibleForClient(pluginApp(Application::class)->getPlentyId());
@@ -125,6 +133,8 @@ class Items implements ItemLoaderContract
 
             $textFilter->hasNameInLanguage($textFilterLanguage, $textFilterType);
         }
+
+        $this->tack("getFilterStack");
 
         return [
             $clientFilter,

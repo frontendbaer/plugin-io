@@ -1,6 +1,7 @@
 <?php
 namespace IO\Services\ItemLoader\Services;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\ItemLoader\Contracts\ItemLoaderFactory;
 
 /**
@@ -11,6 +12,7 @@ use IO\Services\ItemLoader\Contracts\ItemLoaderFactory;
 class ItemLoaderService
 {
 	use LoadResultFields;
+	use RuntimeTracker;
 
 	/**
 	 * @var array
@@ -63,9 +65,13 @@ class ItemLoaderService
 	 */
 	public function load()
 	{
+	    $this->start("load");
 		/** @var ItemLoaderFactory $itemLoaderFactory */
 		$itemLoaderFactory = pluginApp(ItemLoaderFactory::class);
-		return $itemLoaderFactory->runSearch($this->loaderClassList, $this->resultFields, $this->options);
+		$result = $itemLoaderFactory->runSearch($this->loaderClassList, $this->resultFields, $this->options);
+	    $this->track("load");
+
+	    return $result;
 	}
 
 	/**
@@ -76,9 +82,13 @@ class ItemLoaderService
 	 */
 	public function loadForTemplate($templateName, $loaderClassList, $options = [])
 	{
+	    $this->start("loadForTemplate");
 		$this->resultFields = $this->loadResultFields($templateName);
 		$this->loaderClassList = $loaderClassList;
 		$this->options = $options;
-		return $this->load();
+		$result = $this->load();
+	    $this->track("loadForTemplate");
+
+	    return $result;
 	}
 }

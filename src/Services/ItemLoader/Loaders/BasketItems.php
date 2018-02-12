@@ -2,6 +2,7 @@
 
 namespace IO\Services\ItemLoader\Loaders;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\SessionStorageService;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\ItemLoader\Contracts\ItemLoaderPaginationContract;
@@ -17,6 +18,8 @@ use Plenty\Plugin\Application;
 
 class BasketItems implements ItemLoaderContract, ItemLoaderPaginationContract
 {
+    use RuntimeTracker;
+
     private $options = [];
     
     /**
@@ -24,15 +27,19 @@ class BasketItems implements ItemLoaderContract, ItemLoaderPaginationContract
      */
     public function getSearch()
     {
+        $this->start("getSearch");
         $languageMutator = pluginApp(LanguageMutator::class, ["languages" => [pluginApp(SessionStorageService::class)->getLang()]]);
         $imageMutator = pluginApp(ImageMutator::class);
         $imageMutator->addClient(pluginApp(Application::class)->getPlentyId());
-    
+
         $documentProcessor = pluginApp(DocumentProcessor::class);
         $documentProcessor->addMutator($languageMutator);
         $documentProcessor->addMutator($imageMutator);
-    
-        return pluginApp(DocumentSearch::class, [$documentProcessor]);
+
+        $document = pluginApp(DocumentSearch::class, [$documentProcessor]);
+        $this->track("getSearch");
+
+        return $document;
     }
     
     /**
@@ -50,6 +57,7 @@ class BasketItems implements ItemLoaderContract, ItemLoaderPaginationContract
      */
     public function getFilterStack($options = [])
     {
+        $this->start("getFilterStack");
         /** @var ClientFilter $clientFilter */
         $clientFilter = pluginApp(ClientFilter::class);
         $clientFilter->isVisibleForClient(pluginApp(Application::class)->getPlentyId());
@@ -62,7 +70,9 @@ class BasketItems implements ItemLoaderContract, ItemLoaderPaginationContract
         {
             $variationFilter->hasIds($options['variationIds']);
         }
-        
+
+        $this->start("getFilterStack");
+
         return [
             $clientFilter,
             $variationFilter

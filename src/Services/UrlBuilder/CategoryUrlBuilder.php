@@ -2,13 +2,17 @@
 
 namespace IO\Services\UrlBuilder;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\CategoryService;
 use IO\Services\SessionStorageService;
 
 class CategoryUrlBuilder
 {
+    use RuntimeTracker;
+
     public function buildUrl( int $categoryId, string $lang = null ): UrlQuery
     {
+        $this->start("buildUrl");
         if ( $lang === null )
         {
             $lang = pluginApp( SessionStorageService::class )->getLang();
@@ -33,6 +37,7 @@ class CategoryUrlBuilder
                 );
             }
         }
+        $this->track("buildUrl");
     }
 
     private function buildUrlQuery( $path, $lang ): UrlQuery

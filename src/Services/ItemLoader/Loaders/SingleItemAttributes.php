@@ -1,6 +1,7 @@
 <?php
 namespace IO\Services\ItemLoader\Loaders;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\SessionStorageService;
 use IO\Services\PriceDetectService;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
@@ -22,6 +23,8 @@ use Plenty\Modules\Item\Search\Filter\SalesPriceFilter;
  */
 class SingleItemAttributes implements ItemLoaderContract
 {
+    use RuntimeTracker;
+
     private $options = [];
     
 	/**
@@ -29,6 +32,7 @@ class SingleItemAttributes implements ItemLoaderContract
 	 */
 	public function getSearch()
 	{
+	    $this->start("getSearch");
         $languageMutator = pluginApp(LanguageMutator::class, ["languages" => [pluginApp(SessionStorageService::class)->getLang()]]);
         $imageMutator = pluginApp(ImageMutator::class);
         $imageMutator->addClient(pluginApp(Application::class)->getPlentyId());
@@ -36,7 +40,9 @@ class SingleItemAttributes implements ItemLoaderContract
         $documentProcessor = pluginApp(DocumentProcessor::class);
         $documentProcessor->addMutator($languageMutator);
         $documentProcessor->addMutator($imageMutator);
-        
+
+        $this->track("getSearch");
+
         return pluginApp(DocumentSearch::class, [$documentProcessor]);
 	}
     
@@ -45,9 +51,12 @@ class SingleItemAttributes implements ItemLoaderContract
      */
 	public function getAggregations()
     {
+        $this->start("getAggregations");
         $attributeProcessor = pluginApp(AttributeValueListAggregationProcessor::class);
         $attributeSearch = pluginApp(AttributeValueListAggregation::class, [$attributeProcessor]);
-        
+
+        $this->track("getAggregations");
+
         return [
             $attributeSearch
         ];
@@ -59,6 +68,7 @@ class SingleItemAttributes implements ItemLoaderContract
 	 */
 	public function getFilterStack($options = [])
 	{
+	    $this->start("getFilterStack");
         /**
          * @var PriceDetectService $priceDetectService
          */
@@ -70,8 +80,10 @@ class SingleItemAttributes implements ItemLoaderContract
          */
         $priceFilter = pluginApp(SalesPriceFilter::class);
         $priceFilter->hasAtLeastOnePrice($priceIds);
-	    
-		return [
+
+        $this->track("getFilterStack");
+
+        return [
 		    $priceFilter
         ];
 	}

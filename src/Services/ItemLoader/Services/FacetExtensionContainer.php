@@ -1,6 +1,7 @@
 <?php
 namespace IO\Services\ItemLoader\Services;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\ItemLoader\Contracts\FacetExtension;
 use Plenty\Plugin\Events\Dispatcher;
 
@@ -10,6 +11,8 @@ use Plenty\Plugin\Events\Dispatcher;
  */
 class FacetExtensionContainer
 {
+    use RuntimeTracker;
+
     /**
      * @var FacetExtension[]
      */
@@ -34,10 +37,12 @@ class FacetExtensionContainer
      */
     public function getFacetExtensions()
     {
+        $this->start("getFacetExtensions");
         if (empty($this->facetExtensionsList)) {
             $this->dispatcher->fire('IO.initFacetExtensions', [$this]);
         }
 
+        $this->track("getFacetExtensions");
         return $this->facetExtensionsList;
     }
 
@@ -46,6 +51,8 @@ class FacetExtensionContainer
      */
     public function addFacetExtension(FacetExtension $facetExtension)
     {
+        $this->start("addFacetExtension");
         $this->facetExtensionsList[] = $facetExtension;
+        $this->track("addFacetExtension");
     }
 }

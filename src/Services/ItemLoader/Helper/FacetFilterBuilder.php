@@ -3,6 +3,7 @@
 namespace IO\Services\ItemLoader\Helper;
 
 use IO\Builder\Facet\FacetBuilder;
+use IO\Helper\RuntimeTracker;
 use IO\Services\ItemLoader\Contracts\FacetExtension;
 use IO\Services\ItemLoader\Services\FacetExtensionContainer;
 use IO\Services\SessionStorageService;
@@ -12,8 +13,11 @@ use Plenty\Plugin\Application;
 
 class FacetFilterBuilder implements FilterBuilder
 {
+    use RuntimeTracker;
+
     public function getFilters($options):array
     {
+        $this->start("getFilters");
         $plentyId = pluginApp(Application::class)->getPlentyId();
         $lang = pluginApp(SessionStorageService::class)->getLang();
     
@@ -44,7 +48,9 @@ class FacetFilterBuilder implements FilterBuilder
                 }
             }
         }
-        
+
+        $this->track("getFilters");
+
         return $filters;
     }
     

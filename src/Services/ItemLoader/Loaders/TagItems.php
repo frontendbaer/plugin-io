@@ -2,6 +2,7 @@
 
 namespace IO\Services\ItemLoader\Loaders;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\SessionStorageService;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\ItemLoader\Contracts\ItemLoaderPaginationContract;
@@ -30,6 +31,8 @@ use Plenty\Modules\Item\Search\Filter\SalesPriceFilter;
  */
 class TagItems implements ItemLoaderContract, ItemLoaderPaginationContract, ItemLoaderSortingContract
 {
+    use RuntimeTracker;
+
     private $options = [];
     
     /**
@@ -37,11 +40,13 @@ class TagItems implements ItemLoaderContract, ItemLoaderPaginationContract, Item
      */
     public function getSearch()
     {
+        $this->start("getSearch");
         $languageMutator = pluginApp(LanguageMutator::class, ["languages" => [pluginApp(SessionStorageService::class)->getLang()]]);
         
         $documentProcessor = pluginApp(DocumentProcessor::class);
         $documentProcessor->addMutator($languageMutator);
-        
+        $this->track("getSearch");
+
         return pluginApp(DocumentSearch::class, [$documentProcessor]);
     }
     
@@ -59,6 +64,7 @@ class TagItems implements ItemLoaderContract, ItemLoaderPaginationContract, Item
      */
     public function getFilterStack($options = [])
     {
+        $this->start("getFilterStack");
         /** @var ClientFilter $clientFilter */
         $clientFilter = pluginApp(ClientFilter::class);
         $clientFilter->isVisibleForClient(pluginApp(Application::class)->getPlentyId());
@@ -135,7 +141,9 @@ class TagItems implements ItemLoaderContract, ItemLoaderPaginationContract, Item
          */
         $priceFilter = pluginApp(SalesPriceFilter::class);
         $priceFilter->hasAtLeastOnePrice($priceIds);
-        
+
+        $this->track("getFilterStack");
+
         return [
             $clientFilter,
             $variationFilter,
@@ -165,13 +173,15 @@ class TagItems implements ItemLoaderContract, ItemLoaderPaginationContract, Item
     
     public function getSorting($options = [])
     {
+        $this->start("getSorting");
         $sortingInterface = null;
-        
+
         if(isset($options['sorting']) && strlen($options['sorting']))
         {
             $sortingInterface = SortingBuilder::buildSorting($options['sorting']);
         }
-        
+
+        $this->track("getSorting");
         return $sortingInterface;
     }
     
