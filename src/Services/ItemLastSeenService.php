@@ -3,6 +3,7 @@
 namespace IO\Services;
 
 use IO\Constants\SessionStorageKeys;
+use IO\Helper\RuntimeTracker;
 use IO\Services\SessionStorageService;
 
 /**
@@ -11,6 +12,8 @@ use IO\Services\SessionStorageService;
  */
 class ItemLastSeenService
 {
+    use RuntimeTracker;
+
     const MAX_COUNT = 9;
     private $sessionStorage;
     
@@ -20,7 +23,9 @@ class ItemLastSeenService
      */
     public function __construct(SessionStorageService $sessionStorage)
     {
+        $this->start("constructor");
         $this->sessionStorage = $sessionStorage;
+        $this->track("constructor");
     }
     
     /**
@@ -28,7 +33,9 @@ class ItemLastSeenService
      */
     public function setLastSeenMaxCount(int $maxCount)
     {
+        $this->start("setLastSeenMaxCount");
         $this->sessionStorage->setSessionValue(SessionStorageKeys::LAST_SEEN_MAX_COUNT, $maxCount);
+        $this->track("setLastSeenMaxCount");
     }
     
     /**
@@ -36,6 +43,7 @@ class ItemLastSeenService
      */
     public function setLastSeenItem(int $variationId)
     {
+        $this->start("setLastSeenItem");
         $maxCount = $this->sessionStorage->getSessionValue(SessionStorageKeys::LAST_SEEN_MAX_COUNT);
         if(is_null($maxCount))
         {
@@ -59,5 +67,7 @@ class ItemLastSeenService
             array_unshift($lastSeenItems, $variationId);
             $this->sessionStorage->setSessionValue(SessionStorageKeys::LAST_SEEN_ITEMS, $lastSeenItems);
         }
+        $this->track("setLastSeenItem");
+
     }
 }

@@ -8,6 +8,7 @@
 namespace IO\Services;
 
 use IO\Constants\SessionStorageKeys;
+use IO\Helper\RuntimeTracker;
 use IO\Services\CustomerService;
 use IO\Repositories\ItemWishListRepository;
 use IO\Repositories\ItemWishListGuestRepository;
@@ -19,10 +20,13 @@ use IO\Services\SessionStorageService;
  */
 class ItemWishListService
 {
+    use RuntimeTracker;
+
     private $itemWishListRepo;
     
     public function __construct(SessionStorageService $sessionStorage)
     {
+        $this->start("constructor");
         if($sessionStorage->getSessionValue(SessionStorageKeys::GUEST_WISHLIST_MIGRATION))
         {
             $this->migrateGuestItemWishList();
@@ -44,6 +48,8 @@ class ItemWishListService
         }
         
         $this->itemWishListRepo = $itemWishListRepo;
+        $this->track("constructor");
+
     }
 
     /**
@@ -53,7 +59,11 @@ class ItemWishListService
      */
     public function addItemWishListEntry(int $variationId, int $quantity)
     {
-        return $this->itemWishListRepo->addItemWishListEntry($variationId, $quantity);
+        $this->start("addItemWishListEntry");
+        $result = $this->itemWishListRepo->addItemWishListEntry($variationId, $quantity);
+        $this->track("addItemWishListEntry");
+
+        return $result;
     }
 
     /**
@@ -62,7 +72,11 @@ class ItemWishListService
      */
     public function isItemInWishList(int $variationId)
     {
-        return $this->itemWishListRepo->isItemInWishList($variationId);
+        $this->start("isItemInWishList");
+        $result = $this->itemWishListRepo->isItemInWishList($variationId);
+        $this->track("isItemInWishList");
+
+        return $result;
     }
 
     /**
@@ -70,7 +84,10 @@ class ItemWishListService
      */
     public function getItemWishList()
     {
-        return $this->itemWishListRepo->getItemWishList();
+        $this->start("getItemWishList");
+        $result = $this->itemWishListRepo->getItemWishList();
+        $this->track("getItemWishList");
+        return $result;
     }
 
     /**
@@ -78,7 +95,11 @@ class ItemWishListService
      */
     public function getCountedItemWishList()
     {
-        return$this->itemWishListRepo->getCountedItemWishList();
+        $this->start("getCountedItemWishList");
+        $result = $this->itemWishListRepo->getCountedItemWishList();
+        $this->track("getCountedItemWishList");
+
+        return $result;
     }
 
     /**
@@ -87,11 +108,16 @@ class ItemWishListService
      */
     public function removeItemWishListEntry(int $variationId)
     {
-        return $this->itemWishListRepo->removeItemWishListEntry($variationId);
+        $this->start("removeItemWishListEntry");
+        $result = $this->itemWishListRepo->removeItemWishListEntry($variationId);
+        $this->track("removeItemWishListEntry");
+
+        return $result;
     }
     
     public function migrateGuestItemWishList()
     {
+        $this->start("migrateGuestItemWishList");
         /**
          * @var ItemWishListGuestRepository $guestWishListRepo
          */
@@ -116,5 +142,8 @@ class ItemWishListService
             
             $guestWishListRepo->resetItemWishList();
         }
+
+        $this->track("migrateGuestItemWishList");
+
     }
 }

@@ -6,6 +6,7 @@ use IO\Api\Resources\CouponResource;
 use IO\Extensions\TwigIOExtension;
 use IO\Extensions\TwigServiceProvider;
 use IO\Middlewares\Middleware;
+use IO\Middlewares\RuntimeTrackerMiddleware;
 use IO\Services\AuthenticationService;
 use IO\Services\AvailabilityService;
 use IO\Services\BasketService;
@@ -56,6 +57,7 @@ class IOServiceProvider extends ServiceProvider
     {
         $this->getApplication()->register(ContentCachingProvider::class);
         $this->addGlobalMiddleware(Middleware::class);
+        $this->addGlobalMiddleware( RuntimeTrackerMiddleware::class );
         $this->getApplication()->register(IORouteServiceProvider::class);
 
         $this->getApplication()->singleton('IO\Helper\TemplateContainer');

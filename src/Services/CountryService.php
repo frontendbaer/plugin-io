@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use Plenty\Modules\Order\Shipping\Countries\Contracts\CountryRepositoryContract;
 use Plenty\Modules\Order\Shipping\Countries\Models\Country;
 use Plenty\Modules\Frontend\Contracts\Checkout;
@@ -12,6 +13,8 @@ use Plenty\Modules\Frontend\Contracts\Checkout;
  */
 class CountryService
 {
+    use RuntimeTracker;
+
 	/**
 	 * @var CountryRepositoryContract
 	 */
@@ -28,7 +31,9 @@ class CountryService
      */
 	public function __construct(CountryRepositoryContract $countryRepository)
 	{
+	    $this->start("constructor");
 		$this->countryRepository = $countryRepository;
+	    $this->track("constructor");
 	}
 
     /**
@@ -38,6 +43,7 @@ class CountryService
      */
     public function getActiveCountriesList($lang = 'de'):array
     {
+        $this->start("getActiveCountriesList");
         if (!isset(self::$activeCountries[$lang])) {
             $list = $this->countryRepository->getActiveCountriesList();
 
@@ -49,6 +55,7 @@ class CountryService
             }
         }
 
+        $this->track("getActiveCountriesList");
         return self::$activeCountries[$lang];
     }
 
@@ -59,11 +66,13 @@ class CountryService
      */
 	public function getActiveCountryNameMap(string $language):array
 	{
+	    $this->start("getActiveCountryNameMap");
         $nameMap = [];
         foreach ($this->getActiveCountriesList($language) as $country) {
             $nameMap[$country->id] = $country->currLangName;
         }
 
+	    $this->track("getActiveCountryNameMap");
         return $nameMap;
 	}
 
@@ -73,7 +82,9 @@ class CountryService
      */
 	public function setShippingCountryId(int $shippingCountryId)
 	{
+	    $this->start("setShippingCountryId");
 		pluginApp(Checkout::class)->setShippingCountryId($shippingCountryId);
+	    $this->track("setShippingCountryId");
 	}
 
     /**
@@ -83,7 +94,11 @@ class CountryService
      */
 	public function getCountryById(int $countryId):Country
 	{
-		return $this->countryRepository->getCountryById($countryId);
+	    $this->start("getCountryById");
+		$result = $this->countryRepository->getCountryById($countryId);
+	    $this->track("getCountryById");
+
+		return $result;
 	}
 
     /**
@@ -94,6 +109,7 @@ class CountryService
      */
 	public function getCountryName(int $countryId, string $lang = "de"):string
 	{
+	    $this->start("getCountryName");
 		$country = $this->countryRepository->getCountryById($countryId);
 		if($country instanceof Country && count($country->names) != 0)
 		{
@@ -101,10 +117,15 @@ class CountryService
 			{
 				if($countryName->language == $lang)
 				{
+	                $this->track("getCountryName");
 					return $countryName->name;
 				}
 			}
-			return $country->names[0]->name;
+
+			$countryName = $country->names[0]->name;
+            $this->track("getCountryName");
+
+            return $countryName;
 		}
 		return "";
 	}

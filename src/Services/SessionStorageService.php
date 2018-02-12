@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use Plenty\Modules\Frontend\Session\Storage\Contracts\FrontendSessionStorageFactoryContract;
 use Plenty\Modules\Frontend\Session\Storage\Models\Customer;
 
@@ -11,6 +12,7 @@ use Plenty\Modules\Frontend\Session\Storage\Models\Customer;
  */
 class SessionStorageService
 {
+    use RuntimeTracker;
 	/**
 	 * @var FrontendSessionStorageFactoryContract
 	 */
@@ -22,7 +24,9 @@ class SessionStorageService
      */
 	public function __construct(FrontendSessionStorageFactoryContract $sessionStorage)
 	{
+	    $this->start("constructor");
 		$this->sessionStorage = $sessionStorage;
+	    $this->track("constructor");
 	}
 
     /**
@@ -32,7 +36,9 @@ class SessionStorageService
      */
 	public function setSessionValue(string $name, $value)
 	{
+	    $this->start("setSessionValue");
 		$this->sessionStorage->getPlugin()->setValue($name, $value);
+	    $this->track("setSessionValue");
 	}
 
     /**
@@ -42,7 +48,11 @@ class SessionStorageService
      */
 	public function getSessionValue(string $name)
 	{
-		return $this->sessionStorage->getPlugin()->getValue($name);
+	    $this->start("getSessionValue");
+		$value = $this->sessionStorage->getPlugin()->getValue($name);
+	    $this->start("getSessionValue");
+
+	    return $value;
 	}
 
     /**
@@ -51,6 +61,7 @@ class SessionStorageService
      */
 	public function getLang()
 	{
+	    $this->start("getLang");
         $lang = $this->sessionStorage->getLocaleSettings()->language;
 
         if(is_null($lang) || !strlen($lang))
@@ -58,6 +69,7 @@ class SessionStorageService
             $lang = 'de';
         }
 
+	    $this->track("getLang");
 		return $lang;
 	}
 
@@ -66,6 +78,10 @@ class SessionStorageService
      */
 	public function getCustomer()
     {
-        return $this->sessionStorage->getCustomer();
+        $this->start("getCustomer");
+        $customer = $this->sessionStorage->getCustomer();
+        $this->track("getCustomer");
+
+        return $customer;
     }
 }

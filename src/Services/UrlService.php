@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use IO\Helper\ShopUrl;
 use IO\Services\UrlBuilder\CategoryUrlBuilder;
 use IO\Services\UrlBuilder\UrlQuery;
@@ -12,6 +13,8 @@ use Plenty\Plugin\Application;
 
 class UrlService
 {
+    use RuntimeTracker;
+
     /**
      * Get canonical url for a category
      * @param int           $categoryId
@@ -20,9 +23,12 @@ class UrlService
      */
     public function getCategoryURL( $categoryId, $lang = null )
     {
+        $this->start("getCategoryURL");
         /** @var CategoryUrlBuilder $categoryUrlBuilder */
         $categoryUrlBuilder = pluginApp( CategoryUrlBuilder::class );
-        return $categoryUrlBuilder->buildUrl( $categoryId, $lang );
+        $url = $categoryUrlBuilder->buildUrl( $categoryId, $lang );
+        $this->track("getCategoryURL");
+        return $url;
     }
 
     /**
@@ -34,6 +40,7 @@ class UrlService
      */
     public function getVariationURL( $itemId, $variationId, $lang = null )
     {
+        $this->start("getVariationURL");
         /** @var VariationUrlBuilder $variationUrlBuilder */
         $variationUrlBuilder = pluginApp( VariationUrlBuilder::class );
         $variationUrl = $variationUrlBuilder->buildUrl( $itemId, $variationId, $lang );
@@ -45,6 +52,7 @@ class UrlService
             );
         }
 
+        $this->track("getVariationURL");
         return $variationUrl;
     }
 
@@ -55,40 +63,47 @@ class UrlService
      */
     public function getCanonicalURL( $lang = null )
     {
+        $this->start("getCanonicalURL");
         /** @var CategoryService $categoryService */
         $categoryService = pluginApp( CategoryService::class );
         if ( TemplateService::$currentTemplate === 'tpl.item' )
         {
             $currentItem = $categoryService->getCurrentItem();
+            $itemURL = null;
             if ( count($currentItem) > 0 )
             {
-                return $this
+                $itemURL = $this
                     ->getVariationURL( $currentItem['item']['id'], $currentItem['variation']['id'], $lang )
                     ->toAbsoluteUrl( $lang !== null );
             }
 
-            return null;
+            $this->track("getCanonicalURL");
+            return $itemURL;
         }
 
         if ( substr(TemplateService::$currentTemplate,0, 12) === 'tpl.category' )
         {
+            $categoryURL = null;
             $currentCategory = $categoryService->getCurrentCategory();
 
             if ( $currentCategory !== null )
             {
-                return $this
+                $categoryURL = $this
                     ->getCategoryURL( $currentCategory->id, $lang )
                     ->toAbsoluteUrl( $lang !== null );
             }
-            return null;
+            $this->track("getCanonicalURL");
+            return $categoryURL;
         }
 
+        $url = null;
         if ( TemplateService::$currentTemplate === 'tpl.home' )
         {
-            return pluginApp( UrlQuery::class, ['path' => "", 'lang' => $lang])
+            $url = pluginApp( UrlQuery::class, ['path' => "", 'lang' => $lang])
                 ->toAbsoluteUrl( $lang !== null );
         }
 
+        $this->track("getCanonicalURL");
         return null;
     }
 
@@ -98,6 +113,7 @@ class UrlService
      */
     public function getLanguageURLs()
     {
+        $this->start("getLanguageURLs");
         $result = [];
         $defaultUrl = $this->getCanonicalURL();
 
@@ -116,6 +132,8 @@ class UrlService
                 $result[$language] = $url;
             }
         }
+
+        $this->track("getLanguageURLs");
 
         return $result;
     }

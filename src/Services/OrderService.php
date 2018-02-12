@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use Plenty\Modules\Frontend\PaymentMethod\Contracts\FrontendPaymentMethodRepositoryContract;
 use Plenty\Modules\Order\ContactWish\Contracts\ContactWishRepositoryContract;
 use Plenty\Modules\Order\Contracts\OrderRepositoryContract;
@@ -29,6 +30,8 @@ use Plenty\Modules\Authorization\Services\AuthHelper;
  */
 class OrderService
 {
+    use RuntimeTracker;
+
 	/**
 	 * @var OrderRepositoryContract
 	 */
@@ -60,10 +63,12 @@ class OrderService
         FrontendPaymentMethodRepositoryContract $frontendPaymentMethodRepository
 	)
 	{
+	    $this->start("constructor");
 		$this->orderRepository = $orderRepository;
 		$this->basketService   = $basketService;
         $this->sessionStorage  = $sessionStorage;
         $this->frontendPaymentMethodRepository = $frontendPaymentMethodRepository;
+	    $this->track("constructor");
 	}
 
     /**
@@ -72,6 +77,7 @@ class OrderService
      */
 	public function placeOrder():LocalizedOrder
 	{
+	    $this->start("placeOrder");
 	    /** @var CheckoutService $checkoutService */
         $checkoutService = pluginApp(CheckoutService::class);
         
@@ -106,13 +112,17 @@ class OrderService
         // reset basket after order was created
         $this->basketService->resetBasket();
         $customerService->resetGuestAddresses();
-        
-        
-        return LocalizedOrder::wrap( $order, "de" );
+
+
+        $localizedOrder = LocalizedOrder::wrap( $order, "de" );
+        $this->track("placeOrder");
+
+        return $localizedOrder;
 	}
 	
 	private function saveOrderContactWish($orderId, $text = '')
     {
+        $this->start("saveOrderContactWish");
         if(!is_null($text) && strlen($text))
         {
             /**
@@ -122,6 +132,7 @@ class OrderService
             $contactWishRepo->createContactWish($orderId, nl2br($text));
             $this->sessionStorage->setSessionValue(SessionStorageKeys::ORDER_CONTACT_WISH, null);
         }
+        $this->track("saveOrderContactWish");
     }
 
     /**
@@ -132,8 +143,12 @@ class OrderService
      */
 	public function executePayment( int $orderId, int $paymentId ):array
     {
+        $this->start("executePayment");
         $paymentRepository = pluginApp( PaymentMethodRepositoryContract::class );
-        return $paymentRepository->executePayment( $paymentId, $orderId );
+        $result = $paymentRepository->executePayment( $paymentId, $orderId );
+        $this->track("executePayment");
+
+        return $result;
     }
     
     /**
@@ -145,6 +160,7 @@ class OrderService
      */
 	public function findOrderById(int $orderId, $removeReturnItems = false, $wrap = true)
 	{
+	    $this->start("findOrderById");
         if($removeReturnItems)
         {
             $order = $this->removeReturnItemsFromOrder($this->orderRepository->findOrderById($orderId));
@@ -156,14 +172,19 @@ class OrderService
         
         if($wrap)
         {
-            return LocalizedOrder::wrap($order, 'de');
+            $localizedOrder = LocalizedOrder::wrap($order, 'de');
+            $this->track("findOrderById");
+            return $localizedOrder;
         }
-        
+
+        $this->track("findOrderById");
+
         return $order;
 	}
 	
 	public function findOrderByAccessKey($orderId, $orderAccessKey)
     {
+        $this->start("finderOrderbyAccessKey");
         /**
          * @var TemplateConfigService $templateConfigService
          */
@@ -192,16 +213,22 @@ class OrderService
             {
                 if ((int)$customerService->getContactId() <= 0)
                 {
+                    $this->track("finderOrderbyAccessKey");
+
                     return pluginApp(Response::class)->redirectTo('login?backlink=confirmation/' . $orderId . '/' . $orderAccessKey);
                 }
                 elseif ((int)$orderContactId !== (int)$customerService->getContactId())
                 {
+                    $this->track("finderOrderbyAccessKey");
                     return null;
                 }
             }
         }
-    
-        return LocalizedOrder::wrap($order, 'de');
+
+        $localizedOrder = LocalizedOrder::wrap($order, 'de');
+        $this->track("finderOrderbyAccessKey");
+
+        return $localizedOrder;
     }
     
     /**
@@ -215,6 +242,7 @@ class OrderService
      */
     public function getOrdersForContact(int $contactId, int $page = 1, int $items = 50, array $filters = [], $wrapped = true)
     {
+        $this->start("getOrdersForContact");
         if(!isset($filters['orderType']))
         {
             $filters['orderType'] = OrderType::ORDER;
@@ -243,7 +271,9 @@ class OrderService
             }
             $orders->setResult($o);
         }
-        
+
+        $this->track("getOrdersForContact");
+
         return $orders;
     }
     
@@ -254,6 +284,7 @@ class OrderService
      */
     public function getLatestOrderForContact( int $contactId )
     {
+        $this->start("getLatestOrderForContact");
         if($contactId > 0)
         {
             $order = $this->orderRepository->getLatestOrderByContactId( $contactId );
@@ -262,13 +293,16 @@ class OrderService
         {
             $order = $this->orderRepository->findOrderById($this->sessionStorage->getSessionValue(SessionStorageKeys::LATEST_ORDER_ID));
         }
-        
+
+        $result = null;
         if(!is_null($order))
         {
-            return LocalizedOrder::wrap( $order, "de" );
+            $result = LocalizedOrder::wrap( $order, "de" );
         }
-        
-        return null;
+
+        $this->track("getLatestOrderForContact");
+
+        return $result;
     }
     
     /**
@@ -284,31 +318,34 @@ class OrderService
     
     public function getOrderPropertyByOrderId($orderId, $typeId)
     {
+        $this->start("getOrderPropertyByOrderId");
         /**
          * @var OrderPropertyRepositoryContract $orderPropertyRepo
          */
         $orderPropertyRepo = pluginApp(OrderPropertyRepositoryContract::class);
-        return $orderPropertyRepo->findByOrderId($orderId, $typeId);
+        $property = $orderPropertyRepo->findByOrderId($orderId, $typeId);
+        $this->track("getOrderPropertyByOrderId");
+
+        return $property;
     }
     
     public function isReturnActive()
     {
+        $this->start("isReturnActive");
         /**
          * @var TemplateConfigService $templateConfigService
          */
         $templateConfigService = pluginApp(TemplateConfigService::class);
         $returnsActive = $templateConfigService->get('my_account.order_return_active', 'true');
-        
-        if($returnsActive == 'true')
-        {
-            return true;
-        }
-        
-        return false;
+
+        $this->track("isReturnActive");
+
+        return $returnsActive == 'true';
     }
     
     public function isOrderReturnable(Order $order)
     {
+        $this->start("isOrderReturnable");
         $returnActive = $this->isReturnActive();
         
         if($returnActive)
@@ -320,12 +357,14 @@ class OrderService
             $enabledRoutes = explode(', ',  $config->get('IO.routing.enabled_routes') );
             if ( !in_array('order-return', $enabledRoutes) && !in_array('all', $enabledRoutes) )
             {
+                $this->track("isOrderReturnable");
                 return false;
             }
             
             $orderWithoutReturnItems = $this->removeReturnItemsFromOrder($order);
             if(!count($orderWithoutReturnItems->orderItems))
             {
+                $this->track("isOrderReturnable");
                 return false;
             }
             
@@ -352,15 +391,18 @@ class OrderService
     
             if( $shippingDateSet && ($createdDateUnix > 0 && $returnTime > 0) && (time() < ($createdDateUnix + ($returnTime * 24 * 60 * 60))) )
             {
+                $this->track("isOrderReturnable");
                 return true;
             }
         }
-        
+
+        $this->track("isOrderReturnable");
         return false;
     }
     
     public function createOrderReturn($orderId, $items = [], $returnNote = '')
     {
+        $this->start("createOrderReturn");
         $order = $this->orderRepository->findOrderById($orderId);
         $order = $this->removeReturnItemsFromOrder($order);
         $order = $order->toArray();
@@ -422,9 +464,12 @@ class OrderService
                 $this->saveOrderContactWish($createdReturn->id, $returnNote);
             }
 
+            $this->track("createOrderReturn");
+
             return $createdReturn;
         }
-        
+
+        $this->track("createOrderReturn");
         return $order;
     }
     
@@ -516,7 +561,11 @@ class OrderService
      */
     public function getPaymentMethodListForSwitch($currentPaymentMethodId = 0, $orderId = null)
     {
-        return $this->frontendPaymentMethodRepository->getCurrentPaymentMethodsListForSwitch($currentPaymentMethodId, $orderId, $this->sessionStorage->getLang());
+        $this->start("getPaymentMethodListForSwitch");
+        $result = $this->frontendPaymentMethodRepository->getCurrentPaymentMethodsListForSwitch($currentPaymentMethodId, $orderId, $this->sessionStorage->getLang());
+        $this->track("getPaymentMethodListForSwitch");
+
+        return $result;
     }
     
     /**
@@ -526,11 +575,13 @@ class OrderService
      */
 	public function allowPaymentMethodSwitchFrom($paymentMethodId, $orderId = null)
 	{
+	    $this->start("allowPaymentMethodSwitchFrom");
 		/** @var TemplateConfigService $config */
 		$config = pluginApp(TemplateConfigService::class);
 		if ($config->get('my_account.change_payment') == "false")
 		{
-			return false;
+            $this->track("allowPaymentMethodSwitchFrom");
+            return false;
 		}
 		if($orderId != null)
 		{
@@ -540,13 +591,15 @@ class OrderService
             
             $order = $authHelper->processUnguarded( function() use ($orderId, $orderRepo)
             {
+                $this->track("allowPaymentMethodSwitchFrom");
                 return $orderRepo->findOrderById($orderId);
             });
 			
 			if ($order->paymentStatus !== OrderPaymentStatus::UNPAID)
 			{
 				// order was paid
-				return false;
+                $this->track("allowPaymentMethodSwitchFrom");
+                return false;
 			}
 			
 			$statusId = $order->statusId;
@@ -554,10 +607,14 @@ class OrderService
 			
 			if(!($statusId <= 3.4 || ($statusId == 5 && $orderCreatedDate->toDateString() == date('Y-m-d'))))
 			{
-				return false;
+                $this->track("allowPaymentMethodSwitchFrom");
+                return false;
 			}
 		}
-		return $this->frontendPaymentMethodRepository->getPaymentMethodSwitchFromById($paymentMethodId, $orderId);
+        $result = $this->frontendPaymentMethodRepository->getPaymentMethodSwitchFromById($paymentMethodId, $orderId);
+
+        $this->track("allowPaymentMethodSwitchFrom");
+        return $result;
 	}
     
     

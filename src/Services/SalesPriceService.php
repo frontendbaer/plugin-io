@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use Plenty\Modules\Account\Contact\Models\Contact;
 use Plenty\Modules\Item\SalesPrice\Contracts\SalesPriceSearchRepositoryContract;
 use Plenty\Modules\Item\SalesPrice\Models\SalesPrice;
@@ -14,6 +15,8 @@ use IO\Services\BasketService;
 
 class SalesPriceService
 {
+    use RuntimeTracker;
+
     private $app;
     private $salesPriceSearchRepo;
     private $customerService;
@@ -42,6 +45,7 @@ class SalesPriceService
         BasketService $basketService
     )
     {
+        $this->start("constructor");
         $this->app                  = $app;
         $this->salesPriceSearchRepo = $salesPriceSearchRepo;
         $this->customerService      = $customerService;
@@ -49,6 +53,7 @@ class SalesPriceService
         $this->basketService        = $basketService;
 
         $this->init();
+        $this->track("constructor");
     }
 
     /**
@@ -104,6 +109,7 @@ class SalesPriceService
      */
     public function getSalesPriceForVariation(int $variationId, $type = 'default', int $quantity = 1)
     {
+        $this->start("getSalesPriceForVariation");
         /**
          * @var SalesPriceSearchRequest $salesPriceSearchRequest
          */
@@ -115,7 +121,9 @@ class SalesPriceService
         $salesPrice = $this->salesPriceSearchRepo->search($salesPriceSearchRequest);
 
 
-        return $this->applyCurrencyConversion($salesPrice);
+        $result = $this->applyCurrencyConversion($salesPrice);
+        $this->track("getSalesPriceForVariation");
+        return $result;
     }
     
     /**
@@ -126,6 +134,7 @@ class SalesPriceService
      */
     public function getAllSalesPricesForVariation(int $variationId, $type = 'default')
     {
+        $this->start("getAllSalesPricesForVariation");
         /**
          * @var SalesPriceSearchRequest $salesPriceSearchRequest
          */
@@ -142,11 +151,14 @@ class SalesPriceService
             $convertedSalesPrices[] = $this->applyCurrencyConversion( $salesPrice );
         }
 
+        $this->track("getAllSalesPricesForVariation");
+
         return $convertedSalesPrices;
     }
 
     public function applyCurrencyConversion( SalesPriceSearchResponse $salesPrice ): SalesPriceSearchResponse
     {
+        $this->start("applyCurrencyConversion");
         $salesPrice->price                      = $salesPrice->price * $salesPrice->conversionFactor;
         $salesPrice->priceNet                   = $salesPrice->priceNet * $salesPrice->conversionFactor;
 //        $salesPrice->basePrice                  = $salesPrice->basePrice * $salesPrice->conversionFactor;
@@ -157,6 +169,8 @@ class SalesPriceService
         $salesPrice->customerClassDiscountNet   = $salesPrice->customerClassDiscountNet * $salesPrice->conversionFactor;
         $salesPrice->categoryDiscount           = $salesPrice->categoryDiscount * $salesPrice->conversionFactor;
         $salesPrice->categoryDiscountNet        = $salesPrice->categoryDiscountNet * $salesPrice->conversionFactor;
+
+        $this->track("applyCurrencyConversion");
 
         return $salesPrice;
     }

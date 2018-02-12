@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use Plenty\Modules\System\Contracts\WebstoreConfigurationRepositoryContract;
 use Plenty\Modules\System\Models\WebstoreConfiguration;
 use Plenty\Plugin\Application;
@@ -12,6 +13,8 @@ use Plenty\Plugin\Application;
  */
 class WebstoreConfigurationService
 {
+    use RuntimeTracker;
+
     /**
      * @var WebstoreConfiguration
      */
@@ -23,7 +26,10 @@ class WebstoreConfigurationService
      */
     public function getPlentyId()
     {
-        return pluginApp(Application::class)->getPlentyId();
+        $this->start("getPlentyId");
+        $plentyId = pluginApp(Application::class)->getPlentyId();
+        $this->track("getPlentyId");
+        return $plentyId;
     }
 
     /**
@@ -31,6 +37,7 @@ class WebstoreConfigurationService
      */
 	public function getWebstoreConfig():WebstoreConfiguration
     {
+        $this->start("getWebstoreConfig");
         if( $this->webstoreConfig === null )
         {
             /** @var WebstoreConfigurationRepositoryContract $webstoreConfig */
@@ -42,6 +49,8 @@ class WebstoreConfigurationService
             $this->webstoreConfig = $webstoreConfig->findByPlentyId($app->getPlentyId());
         }
 
+        $this->track("getWebstoreConfig");
+
         return $this->webstoreConfig;
     }
 
@@ -50,6 +59,7 @@ class WebstoreConfigurationService
 	 */
     public function getActiveLanguageList()
 	{
+	    $this->start("getActiveLanguageList");
         $activeLanguages = [];
         
         /** @var TemplateConfigService $templateConfigService */
@@ -60,8 +70,10 @@ class WebstoreConfigurationService
         {
             $activeLanguages = explode(', ', $languages);
         }
-        
-		return $activeLanguages;
+
+        $this->track("getActiveLanguageList");
+
+        return $activeLanguages;
 	}
 
 	/**
@@ -69,7 +81,11 @@ class WebstoreConfigurationService
 	 */
     public function getDefaultLanguage()
     {
-        return $this->getWebstoreConfig()->defaultLanguage;
+        $this->start("getDefaultLanguage");
+        $language = $this->getWebstoreConfig()->defaultLanguage;
+        $this->track("getDefaultLanguage");
+
+        return $language;
     }
 
     /**
@@ -77,7 +93,11 @@ class WebstoreConfigurationService
 	 */
     public function getDefaultParcelServiceId()
     {
-        return $this->getWebstoreConfig()->defaultParcelServiceId;
+        $this->start("getDefaultParcelServiceId");
+        $defaultId = $this->getWebstoreConfig()->defaultParcelServiceId;
+        $this->track("getDefaultParcelServiceId");
+
+        return $defaultId;
     }
 
     /**
@@ -85,7 +105,11 @@ class WebstoreConfigurationService
      */
     public function getDefaultParcelServicePresetId()
     {
-        return $this->getWebstoreConfig()->defaultParcelServicePresetId;
+        $this->start("getDefaultParselServicePresetId");
+        $defaultId = $this->getWebstoreConfig()->defaultParcelServicePresetId;
+        $this->start("getDefaultParselServicePresetId");
+
+        return $defaultId;
     }
 
     /**
@@ -93,6 +117,7 @@ class WebstoreConfigurationService
      */
     public function getDefaultShippingCountryId()
     {
+        $this->start("getDefaultShippingCountryId");
         $sessionService = pluginApp(SessionStorageService::class);
         $defaultShippingCountryId = $this->getWebstoreConfig()->defaultShippingCountryList[$sessionService->getLang()];
 
@@ -101,6 +126,7 @@ class WebstoreConfigurationService
             $defaultShippingCountryId = $this->getWebstoreConfig()->defaultShippingCountryId;
         }
 
+        $this->track("getDefaultShippingCountryId");
         return $defaultShippingCountryId;
     }
 }

@@ -11,6 +11,7 @@ class ContactBankService
 
     public function __construct( ContactPaymentRepositoryContract $contactPaymentRepository )
     {
+
         $this->contactPaymentRepository = $contactPaymentRepository;
     }
 

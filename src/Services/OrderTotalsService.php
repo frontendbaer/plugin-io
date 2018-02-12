@@ -9,6 +9,7 @@
 namespace IO\Services;
 
 use IO\Builder\Order\OrderItemType;
+use IO\Helper\RuntimeTracker;
 use Plenty\Modules\Order\Models\Order;
 use Plenty\Modules\Order\Models\OrderItem;
 
@@ -18,6 +19,8 @@ use Plenty\Modules\Order\Models\OrderItem;
  */
 class OrderTotalsService
 {
+    use RuntimeTracker;
+
     /**
      * Get all order totals which are relevant for the OrderDetails-modal
      *
@@ -26,6 +29,7 @@ class OrderTotalsService
      */
     public function getAllTotals(Order $order)
     {
+        $this->start("getAllTotals");
         $itemSumGross = 0;
         $itemSumNet = 0;
         $shippingGross = 0;
@@ -68,7 +72,7 @@ class OrderTotalsService
             ];
         }
 
-        return compact(
+        $result = compact(
             'itemSumGross',
             'itemSumNet',
             'shippingGross',
@@ -79,6 +83,9 @@ class OrderTotalsService
             'totalNet',
             'currency'
         );
+
+        $this->track("getAllTotals");
+        return $result;
     }
 
     private function getCustomerAmountId( $amounts )

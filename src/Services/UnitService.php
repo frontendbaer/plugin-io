@@ -3,6 +3,7 @@
 namespace IO\Services;
 
 use IO\Helper\MemoryCache;
+use IO\Helper\RuntimeTracker;
 use Plenty\Modules\Authorization\Services\AuthHelper;
 use Plenty\Modules\Item\Unit\Contracts\UnitNameRepositoryContract;
 use Plenty\Modules\Item\Unit\Contracts\UnitRepositoryContract;
@@ -15,6 +16,7 @@ use Plenty\Modules\Item\Unit\Models\UnitName;
 class UnitService
 {
     use MemoryCache;
+    use RuntimeTracker;
 
 	/**
 	 * @var UnitNameRepositoryContract
@@ -27,7 +29,9 @@ class UnitService
      */
 	public function __construct(UnitNameRepositoryContract $unitRepository)
 	{
+	    $this->start("constructor");
 		$this->unitNameRepository = $unitRepository;
+	    $this->track("constructor");
 	}
 
     /**
@@ -38,17 +42,22 @@ class UnitService
      */
 	public function getUnitById(int $unitId, string $lang = "de"):UnitName
 	{
-		return $this->unitNameRepository->findOne($unitId, $lang);
+	    $this->start("getUnitById");
+		$unit = $this->unitNameRepository->findOne($unitId, $lang);
+	    $this->track("getUnitById");
+
+	    return $unit;
 	}
 
     public function getUnitNameByKey( $unitKey, $lang = null )
     {
+        $this->start("getUnitNameByKey");
         if ( $lang === null )
         {
             $lang = pluginApp(SessionStorageService::class)->getLang();
         }
 
-        return $this->fromMemoryCache(
+        $unitName = $this->fromMemoryCache(
             "unitName.$unitKey.$lang",
             function() use ($unitKey, $lang)
             {
@@ -72,5 +81,8 @@ class UnitService
                 return $this->unitNameRepository->findOne($unitId, $lang)->name;
             }
         );
+        $this->track("getUnitNameByKey");
+
+        return $unitName;
     }
 }

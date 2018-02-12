@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\SessionStorageService;
 use IO\Services\CountryService;
 use IO\Services\WebstoreConfigurationService;
@@ -11,6 +12,8 @@ use Plenty\Plugin\Data\Contracts\Resources;
 
 class LocalizationService
 {
+    use RuntimeTracker;
+
     public function __construct()
     {
         
@@ -18,6 +21,7 @@ class LocalizationService
 
     public function getLocalizationData()
     {
+        $this->start("getLocalizationData");
         $sessionStorage = pluginApp(SessionStorageService::class);
         $country        = pluginApp(CountryService::class);
         $webstoreConfig = pluginApp(WebstoreConfigurationService::class);
@@ -35,22 +39,29 @@ class LocalizationService
             $currentShippingCountryId = $webstoreConfig->getDefaultShippingCountryId();
         }
 
-        return [
+        $result = [
             'activeShippingCountries'  => $country->getActiveCountriesList($lang),
             'activeShopLanguageList'   => $webstoreConfig->getActiveLanguageList(),
             'currentShippingCountryId' => $currentShippingCountryId,
             'shopLanguage'             => $lang
         ];
+        $this->track("getLocalizationData");
+
+        return $result;
+
     }
 
     public function setLanguage($newLanguage, $fireEvent = true)
     {
+        $this->start("setLanguage");
         $localeService = pluginApp(LocaleService::class);
         $localeService->setLanguage($newLanguage, $fireEvent);
+        $this->track("setLanguage");
     }
 
     public function getTranslations( string $plugin, string $group, $lang = null )
     {
+        $this->start("getTranslations");
         if ( $lang === null )
         {
             $lang = pluginApp(SessionStorageService::class)->getLang();
@@ -59,6 +70,9 @@ class LocalizationService
         /** @var Resources $resource */
         $resource = pluginApp( Resources::class );
 
-        return $resource->load( "$plugin::lang/$lang/$group" )->getData();
+        $translations = $resource->load( "$plugin::lang/$lang/$group" )->getData();
+        $this->track("getTranslations");
+
+        return $translations;
     }
 }

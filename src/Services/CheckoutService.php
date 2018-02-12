@@ -4,6 +4,7 @@ namespace IO\Services;
 
 use IO\Builder\Order\AddressType;
 use IO\Helper\LanguageMap;
+use IO\Helper\RuntimeTracker;
 use Plenty\Modules\Basket\Events\Basket\AfterBasketChanged;
 use Plenty\Modules\Frontend\Events\ValidateCheckoutEvent;
 use Plenty\Modules\Frontend\PaymentMethod\Contracts\FrontendPaymentMethodRepositoryContract;
@@ -27,6 +28,8 @@ use Plenty\Plugin\Translation\Translator;
  */
 class CheckoutService
 {
+    use RuntimeTracker;
+
     /**
      * @var FrontendPaymentMethodRepositoryContract
      */
@@ -64,11 +67,13 @@ class CheckoutService
         FrontendSessionStorageFactoryContract $sessionStorage,
         CustomerService $customerService)
     {
+        $this->start("constructor");
         $this->frontendPaymentMethodRepository = $frontendPaymentMethodRepository;
         $this->checkout                        = $checkout;
         $this->basketRepository                = $basketRepository;
         $this->sessionStorage                  = $sessionStorage;
         $this->customerService                 = $customerService;
+        $this->track("constructor");
     }
 
     /**
@@ -77,7 +82,8 @@ class CheckoutService
      */
     public function getCheckout(): array
     {
-        return [
+        $this->start( "getCheckout" );
+        $checkout = [
             "currency" => $this->getCurrency(),
             "currencyList" => $this->getCurrencyList(),
             "methodOfPaymentId" => $this->getMethodOfPaymentId(),
@@ -89,6 +95,9 @@ class CheckoutService
             "billingAddressId" => $this->getBillingAddressId(),
             "paymentDataList" => $this->getCheckoutPaymentDataList(),
         ];
+        $this->track( "getCheckout" );
+
+        return $checkout;
     }
 
     /**
@@ -97,6 +106,7 @@ class CheckoutService
      */
     public function getCurrency(): string
     {
+        $this->start("getCurrency");
         $currency = (string)$this->sessionStorage->getPlugin()->getValue(SessionStorageKeys::CURRENCY);
         if ($currency === null || $currency === "") {
             /** @var SessionStorageService $sessionService */
@@ -115,6 +125,7 @@ class CheckoutService
             }
             $this->setCurrency($currency);
         }
+        $this->track("getCurrency");
         return $currency;
     }
 
@@ -124,12 +135,15 @@ class CheckoutService
      */
     public function setCurrency(string $currency)
     {
+        $this->start("setCurrency");
         $this->sessionStorage->getPlugin()->setValue(SessionStorageKeys::CURRENCY, $currency);
         $this->checkout->setCurrency($currency);
+        $this->track("setCurrency");
     }
 
     public function getCurrencyList()
     {
+        $this->start("getCurrencyList");
         /** @var CurrencyRepositoryContract $currencyRepository */
         $currencyRepository = pluginApp( CurrencyRepositoryContract::class );
 
@@ -147,12 +161,14 @@ class CheckoutService
                 "symbol" => $formatter->getSymbol( \NumberFormatter::CURRENCY_SYMBOL )
             ];
         }
+        $this->track("getCurrencyList");
         return $currencyList;
     }
 
 
     public function getCurrencyData()
     {
+        $this->start("getCurrencyData");
         $currency = $this->getCurrency();
         $locale = LanguageMap::getLocale();
 
@@ -161,14 +177,18 @@ class CheckoutService
             \NumberFormatter::CURRENCY
         );
 
-        return [
+        $result = [
             "name" => $currency,
             "symbol" => $formatter->getSymbol( \NumberFormatter::CURRENCY_SYMBOL )
         ];
+        $this->track("getCurrencyData");
+
+        return $result;
     }
 
     public function getCurrencyPattern()
     {
+        $this->start("getCurrencyPattern");
         $currency = $this->getCurrency();
         $locale = LanguageMap::getLocale();
         $configRepository = pluginApp( ConfigRepository::class );
@@ -190,11 +210,13 @@ class CheckoutService
             );
         }
 
-        return [
+        $result = [
             "separator_decimal" => $formatter->getSymbol(\NumberFormatter::MONETARY_SEPARATOR_SYMBOL),
             "separator_thousands" => $formatter->getSymbol(\NumberFormatter::MONETARY_GROUPING_SEPARATOR_SYMBOL),
             "pattern" => $formatter->getPattern()
         ];
+        $this->track("getCurrencyPattern");
+        return $result;
     }
 
     /**
@@ -203,6 +225,7 @@ class CheckoutService
      */
     public function getMethodOfPaymentId()
     {
+        $this->start("getMethodOfPaymentId");
         $methodOfPaymentID = (int)$this->checkout->getPaymentMethodId();
 
         $methodOfPaymentList = $this->getMethodOfPaymentList();
@@ -228,6 +251,7 @@ class CheckoutService
             }
         }
 
+        $this->track("getMethodOfPaymentId");
         return $methodOfPaymentID;
     }
 
@@ -237,8 +261,10 @@ class CheckoutService
      */
     public function setMethodOfPaymentId(int $methodOfPaymentID)
     {
+        $this->start("setMethodOfPaymentId");
         $this->checkout->setPaymentMethodId($methodOfPaymentID);
         $this->sessionStorage->getPlugin()->setValue('MethodOfPaymentID', $methodOfPaymentID);
+        $this->track("setMethodOfPaymentId");
     }
 
     /**
@@ -247,6 +273,7 @@ class CheckoutService
      */
     public function preparePayment(): array
     {
+        $this->start("preparePayment");
         $validateCheckoutEvent = $this->checkout->validateCheckout();
         if ($validateCheckoutEvent instanceof ValidateCheckoutEvent && !empty($validateCheckoutEvent->getErrorKeysList())) {
             $dispatcher = pluginApp(Dispatcher::class);
@@ -261,15 +288,19 @@ class CheckoutService
                     $errors[] = $translator->trans($errorKey);
                 }
 
-                return array(
+                $result = array(
                     "type" => GetPaymentMethodContent::RETURN_TYPE_ERROR,
                     "value" => implode('<br>', $errors)
                 );
+                $this->track("preparePayment");
+                return $result;
             }
         }
 
         $mopId = $this->getMethodOfPaymentId();
-        return pluginApp(PaymentMethodRepositoryContract::class)->preparePaymentMethod($mopId);
+        $result = pluginApp(PaymentMethodRepositoryContract::class)->preparePaymentMethod($mopId);
+        $this->track("preparePayment");
+        return $result;
     }
 
     /**
@@ -278,7 +309,11 @@ class CheckoutService
      */
     public function getMethodOfPaymentList(): array
     {
-        return $this->frontendPaymentMethodRepository->getCurrentPaymentMethodsList();
+        $this->start("getMethodOfPaymentList");
+        $list = $this->frontendPaymentMethodRepository->getCurrentPaymentMethodsList();
+        $this->track("getMethodOfPaymentList");
+
+        return $list;
     }
 
     /**
@@ -287,7 +322,11 @@ class CheckoutService
      */
     public function getMethodOfPaymentExpressCheckoutList(): array
     {
-        return $this->frontendPaymentMethodRepository->getCurrentPaymentMethodsForExpressCheckout();
+        $this->start("getMethodOfPaymentExpressCheckoutList");
+        $list = $this->frontendPaymentMethodRepository->getCurrentPaymentMethodsForExpressCheckout();
+        $this->track("getMethodOfPaymentExpressCheckoutList");
+
+        return $list;
     }
 
     /**
@@ -296,6 +335,7 @@ class CheckoutService
      */
     public function getCheckoutPaymentDataList(): array
     {
+        $this->start("getCheckoutPaymentDataList");
         $paymentDataList = array();
         $mopList         = $this->getMethodOfPaymentList();
         $lang            = pluginApp(SessionStorageService::class)->getLang();
@@ -311,6 +351,7 @@ class CheckoutService
             $paymentData['isSelectable']= $this->frontendPaymentMethodRepository->getPaymentMethodIsSelectable($paymentMethod);
             $paymentDataList[]          = $paymentData;
         }
+        $this->track("getCheckoutPaymentDataList");
         return $paymentDataList;
     }
 
@@ -320,6 +361,7 @@ class CheckoutService
      */
     public function getShippingProfileList()
     {
+        $this->start("getShippingProfileList");
         /** @var SessionStorageService $sessionService */
         $sessionService = pluginApp(SessionStorageService::class);
         $showNetPrice   = $sessionService->getCustomer()->showNetPrice;
@@ -348,6 +390,7 @@ class CheckoutService
             }
         }
 
+        $this->track("getShippingProfileList");
         return $list;
     }
 
@@ -357,7 +400,11 @@ class CheckoutService
      */
     public function getShippingCountryId()
     {
-        return $this->checkout->getShippingCountryId();
+        $this->start("getShippingCountryId");
+        $countryId = $this->checkout->getShippingCountryId();
+        $this->track("getShippingCountryId");
+
+        return $countryId;
     }
 
     /**
@@ -366,7 +413,9 @@ class CheckoutService
      */
     public function setShippingCountryId(int $shippingCountryId)
     {
+        $this->start("setShippingCountryId");
         $this->checkout->setShippingCountryId($shippingCountryId);
+        $this->track("setShippingCountryId");
     }
 
     /**
@@ -375,8 +424,12 @@ class CheckoutService
      */
     public function getShippingProfileId(): int
     {
+        $this->start("getShippingProfileId");
         $basket = $this->basketRepository->load();
-        return $basket->shippingProfileId;
+        $profileId = $basket->shippingProfileId;
+        $this->track("getShippingProfileId");
+
+        return $profileId;
     }
 
     /**
@@ -394,11 +447,15 @@ class CheckoutService
      */
     public function getDeliveryAddressId()
     {
+        $this->start("getDeliveryAddressId");
         /**
          * @var BasketService $basketService
          */
         $basketService = pluginApp(BasketService::class);
-        return (int)$basketService->getDeliveryAddressId();
+        $addressId = (int)$basketService->getDeliveryAddressId();
+        $this->track("getDeliveryAddressId");
+
+        return $addressId;
     }
 
     /**
@@ -407,11 +464,13 @@ class CheckoutService
      */
     public function setDeliveryAddressId($deliveryAddressId)
     {
+        $this->start("setDeliveryAddressId");
         /**
          * @var BasketService $basketService
          */
         $basketService = pluginApp(BasketService::class);
         $basketService->setDeliveryAddressId($deliveryAddressId);
+        $this->track("setDeliveryAddressId");
     }
 
     /**
@@ -420,6 +479,7 @@ class CheckoutService
      */
     public function getBillingAddressId()
     {
+        $this->start("getBillingAddressId");
         /**
          * @var BasketService $basketService
          */
@@ -437,6 +497,7 @@ class CheckoutService
             }
         }
 
+        $this->track("getBillingAddressId");
         return $billingAddressId;
     }
 
@@ -446,6 +507,7 @@ class CheckoutService
      */
     public function setBillingAddressId($billingAddressId)
     {
+        $this->start("setBillingAddressId");
         if ((int)$billingAddressId > 0) {
             /**
              * @var BasketService $basketService
@@ -453,5 +515,6 @@ class CheckoutService
             $basketService = pluginApp(BasketService::class);
             $basketService->setBillingAddressId($billingAddressId);
         }
+        $this->track("setBillingAddressId");
     }
 }

@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use Plenty\Modules\Item\Availability\Contracts\AvailabilityRepositoryContract;
 use Plenty\Modules\Item\Availability\Models\Availability;
 
@@ -11,6 +12,8 @@ use Plenty\Modules\Item\Availability\Models\Availability;
  */
 class AvailabilityService
 {
+    use RuntimeTracker;
+
 	/**
 	 * @var AvailabilityRepositoryContract
 	 */
@@ -22,7 +25,9 @@ class AvailabilityService
      */
 	public function __construct(AvailabilityRepositoryContract $availabilityRepository)
 	{
+	    $this->start("constructor");
 		$this->availabilityRepository = $availabilityRepository;
+	    $this->track("constructor");
 	}
 
     /**
@@ -32,7 +37,10 @@ class AvailabilityService
      */
 	public function getAvailabilityById( int $availabilityId = 0 )
     {
-        return $this->availabilityRepository->findAvailability( $availabilityId );
+        $this->start("getAvailabilityById");
+        $availability = $this->availabilityRepository->findAvailability( $availabilityId );
+        $this->track("getAvailabilityById");
+        return $availability;
     }
 
     /**
@@ -41,6 +49,7 @@ class AvailabilityService
      */
     public function getAvailabilities():array
     {
+        $this->start("getAvailabilities");
         $availabilities = array();
         for( $i = 1; $i <= 10; $i++ )
         {
@@ -50,6 +59,8 @@ class AvailabilityService
 	            array_push( $availabilities, $this->getAvailabilityById( $i ) );
 	        }
         }
+        $this->track("getAvailabilities");
+
         return $availabilities;
     }
 }

@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use IO\Services\ItemLoader\Extensions\TwigLoaderPresets;
 use IO\Services\ItemLoader\Services\ItemLoaderService;
 use Plenty\Modules\Accounting\Vat\Models\VatRate;
@@ -19,6 +20,8 @@ use Plenty\Modules\Frontend\Services\VatService;
  */
 class BasketService
 {
+    use RuntimeTracker;
+
     /**
      * @var BasketItemRepositoryContract
      */
@@ -50,19 +53,24 @@ class BasketService
      */
     public function __construct(BasketItemRepositoryContract $basketItemRepository, Checkout $checkout, VatService $vatService, SessionStorageService $sessionStorage)
     {
+        $this->start("constructor");
         $this->basketItemRepository = $basketItemRepository;
         $this->checkout             = $checkout;
         $this->vatService           = $vatService;
         $this->sessionStorage       = $sessionStorage;
+        $this->track("constructor");
     }
 
     public function setTemplate(string $template)
     {
+        $this->start("setTemplate");
         $this->template = $template;
+        $this->track("setTemplate");
     }
 
     public function getBasketForTemplate(): array
     {
+        $this->start("getBasketForTemplate");
         $basket = $this->getBasket()->toArray();
 
         $basket["itemQuantity"] = $this->getBasketQuantity();
@@ -75,6 +83,7 @@ class BasketService
             $basket["shippingAmount"] = $basket["shippingAmountNet"];
         }
 
+        $this->track("getBasketForTemplate");
         return $basket;
     }
 
@@ -84,8 +93,10 @@ class BasketService
      */
     public function getBasket(): Basket
     {
+        $this->start("getBasket");
         $basket = pluginApp(BasketRepositoryContract::class)->load();
         $basket->currency = pluginApp(CheckoutService::class)->getCurrency();
+        $this->track("getBasket");
         return $basket;
     }
 
@@ -94,11 +105,15 @@ class BasketService
      */
     public function getTotalVats(): array
     {
-        return $this->vatService->getCurrentTotalVats();
+        $this->start("getTotalVats");
+        $vats = $this->vatService->getCurrentTotalVats();
+        $this->track( "getTotalVats");
+        return $vats;
     }
 
     public function getBasketQuantity()
     {
+        $this->start( "getBasketQuantity");
         $itemQuantity = 0;
 
         foreach ($this->getBasketItems() as $item) {
@@ -107,6 +122,7 @@ class BasketService
             }
         }
 
+        $this->track( "getBasketQuantity");
         return $itemQuantity;
     }
 
@@ -116,6 +132,7 @@ class BasketService
      */
     public function getBasketItems(): array
     {
+        $this->start("getBasketItems");
         $result = array();
 
         $basketItems        = $this->getBasketItemsRaw();
@@ -133,11 +150,13 @@ class BasketService
             );
         }
 
+        $this->track("getBasketItems");
         return $result;
     }
 
     public function getBasketItemsForTemplate(string $template = ''): array
     {
+        $this->start("getBasketItemsForTemplate");
         if (!strlen($template)) {
             $template = $this->template;
         }
@@ -154,6 +173,7 @@ class BasketService
             );
         }
 
+        $this->track("getBasketItemsForTemplate");
         return $result;
     }
 
@@ -164,12 +184,15 @@ class BasketService
      */
     public function getBasketItem(int $basketItemId): array
     {
+        $this->start("getBasketItem");
         $basketItem = $this->basketItemRepository->findOneById($basketItemId);
         if ($basketItem === null) {
             return array();
         }
         $basketItemData = $this->getBasketItemData($basketItem->toArray());
-        return $this->addVariationData($basketItem, $basketItemData[$basketItem->variationId]);
+        $result = $this->addVariationData($basketItem, $basketItemData[$basketItem->variationId]);
+        $this->track("getBasketItem");
+        return $result;
     }
 
     /**
@@ -180,8 +203,10 @@ class BasketService
      */
     private function addVariationData(BasketItem $basketItem, $variationData): array
     {
+        $this->start("addVariationData");
         $arr              = $basketItem->toArray();
         $arr["variation"] = $variationData;
+        $this->track("addVariationData");
         return $arr;
     }
 
@@ -192,7 +217,7 @@ class BasketService
      */
     public function addBasketItem(array $data): array
     {
-
+        $this->start("addBasketItem");
         if (isset($data['basketItemOrderParams']) && is_array($data['basketItemOrderParams'])) {
             list($data['basketItemOrderParams'], $data['totalOrderParamsMarkup']) = $this->parseBasketItemOrderParams($data['basketItemOrderParams']);
         }
@@ -212,7 +237,10 @@ class BasketService
             return ["code" => $e->getCode()];
         }
 
-        return $this->getBasketItemsForTemplate();
+        $result = $this->getBasketItemsForTemplate();
+        $this->track("addBasketItem");
+
+        return $result;
     }
 
     /**
@@ -222,6 +250,7 @@ class BasketService
      */
     private function parseBasketItemOrderParams(array $basketOrderParams): array
     {
+        $this->start("parseBasketItemOrderParams");
         $properties = [];
 
         $totalOrderParamsMarkup = 0;
@@ -243,6 +272,7 @@ class BasketService
             }
         }
 
+        $this->track("parseBasketItemOrderParams");
         return [$properties, $totalOrderParamsMarkup];
     }
 
@@ -254,13 +284,17 @@ class BasketService
      */
     public function updateBasketItem(int $basketItemId, array $data): array
     {
+        $this->start("updateBasketItem");
         $data['id'] = $basketItemId;
         try {
             $this->basketItemRepository->updateBasketItem($basketItemId, $data);
         } catch (\Exception $e) {
             return ["code" => $e->getCode()];
         }
-        return $this->getBasketItemsForTemplate();
+        $result = $this->getBasketItemsForTemplate();
+        $this->track("updateBasketItem");
+
+        return $result;
     }
 
     /**
@@ -270,8 +304,12 @@ class BasketService
      */
     public function deleteBasketItem(int $basketItemId): array
     {
+        $this->start( "deleteBasketItem" );
         $this->basketItemRepository->removeBasketItem($basketItemId);
-        return $this->getBasketItemsForTemplate();
+        $result = $this->getBasketItemsForTemplate();
+        $this->track( "deleteBasketItem" );
+
+        return $result;
     }
 
     /**
@@ -281,7 +319,11 @@ class BasketService
      */
     public function findExistingOneByData(array $data)
     {
-        return $this->basketItemRepository->findExistingOneByData($data);
+        $this->start("findExistingOneByData");
+        $result = $this->basketItemRepository->findExistingOneByData($data);
+        $this->track("findExistingOneByData");
+
+        return $result;
     }
 
     /**
@@ -292,6 +334,7 @@ class BasketService
      */
     private function getBasketItemData($basketItems = array(), string $template = ''): array
     {
+        $this->start("getBasketItemData");
         if (!strlen($template)) {
             $template = $this->template;
         }
@@ -332,15 +375,18 @@ class BasketService
             $result[$variationId]['data']['orderProperties'] = $orderProperties[$variationId];
         }
 
+        $this->track("getBasketItemData");
         return $result;
     }
 
     public function resetBasket()
     {
+        $this->start("resetBasket");
         $basketItems = $this->getBasketItemsRaw();
         foreach ($basketItems as $basketItem) {
             $this->basketItemRepository->removeBasketItem($basketItem->id);
         }
+        $this->track("resetBasket");
     }
 
     /**
@@ -349,7 +395,9 @@ class BasketService
      */
     public function setBillingAddressId(int $billingAddressId)
     {
+        $this->start("setBillingAddressId");
         $this->checkout->setCustomerInvoiceAddressId($billingAddressId);
+        $this->track("setBillingAddressId");
     }
 
     /**
@@ -358,7 +406,10 @@ class BasketService
      */
     public function getBillingAddressId()
     {
-        return $this->checkout->getCustomerInvoiceAddressId();
+        $this->start("getBillingAddressId");
+        $addressId = $this->checkout->getCustomerInvoiceAddressId();
+        $this->track( "getBillingAddressId");
+        return $addressId;
     }
 
     /**
@@ -367,7 +418,9 @@ class BasketService
      */
     public function setDeliveryAddressId(int $deliveryAddressId)
     {
+        $this->start("setDeliveryAddressId");
         $this->checkout->setCustomerShippingAddressId($deliveryAddressId);
+        $this->track("setDeliveryAddressId");
     }
 
     /**
@@ -376,7 +429,11 @@ class BasketService
      */
     public function getDeliveryAddressId()
     {
-        return $this->checkout->getCustomerShippingAddressId();
+        $this->start("getDeliveryAddressId");
+        $addressId = $this->checkout->getCustomerShippingAddressId();
+        $this->track("getDeliveryAddressId");
+
+        return $addressId;
     }
 
     /**
@@ -386,6 +443,7 @@ class BasketService
      */
     public function getMaxVatValue()
     {
+        $this->start("getMaxVatValue");
         $maxVatValue = -1;
 
         foreach ($this->getBasketItemsRaw() as $item) {
@@ -402,6 +460,7 @@ class BasketService
             }
         }
 
+        $this->track("getMaxVatValue");
         return $maxVatValue;
     }
 
@@ -410,9 +469,11 @@ class BasketService
      */
     private function getBasketItemsRaw()
     {
+        $this->start("getBasketItemsRaw");
         if (!is_array($this->basketItems)) {
             $this->basketItems = $this->basketItemRepository->all();
         }
+        $this->track("getBasketItemsRaw");
 
         return $this->basketItems;
     }

@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use Plenty\Modules\Frontend\Contracts\Checkout;
 
 /**
@@ -10,6 +11,8 @@ use Plenty\Modules\Frontend\Contracts\Checkout;
  */
 class ShippingService
 {
+    use RuntimeTracker;
+
 	/**
 	 * @var Checkout
 	 */
@@ -21,7 +24,9 @@ class ShippingService
      */
 	public function __construct(Checkout $checkout)
 	{
+	    $this->start("constructor");
 		$this->checkout = $checkout;
+	    $this->track("constructor");
 	}
 
     /**
@@ -30,6 +35,8 @@ class ShippingService
      */
 	public function setShippingProfileId(int $shippingProfileId)
 	{
+	    $this->start("setShippingProfileId");
 		$this->checkout->setShippingProfileId($shippingProfileId);
+	    $this->track("setShippingProfileId");
 	}
 }

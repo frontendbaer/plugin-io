@@ -4,6 +4,7 @@ namespace IO\Services;
 
 use IO\Constants\SessionStorageKeys;
 use IO\Constants\LogLevel;
+use IO\Helper\RuntimeTracker;
 
 /**
  * Class BasketService
@@ -11,6 +12,8 @@ use IO\Constants\LogLevel;
  */
 class NotificationService
 {
+    use RuntimeTracker;
+
     /**
      * @var SessionStorageService
      */
@@ -22,7 +25,9 @@ class NotificationService
      */
     public function __construct(SessionStorageService $sessionStorageService)
     {
+        $this->start("constructor");
         $this->sessionStorageService = $sessionStorageService;
+        $this->track("constructor");
     }
 
     /**
@@ -31,6 +36,7 @@ class NotificationService
      */
     public function getNotifications($clear = true):array
     {
+        $this->start("getNotifications");
         $notifications = json_decode($this->sessionStorageService->getSessionValue(SessionStorageKeys::NOTIFICATIONS));
 
         if ($notifications == null || !is_array($notifications))
@@ -43,6 +49,8 @@ class NotificationService
             $this->sessionStorageService->setSessionValue(SessionStorageKeys::NOTIFICATIONS, json_encode(array()));
         }
 
+        $this->track("getNotifications");
+
         return $notifications;
     }
 
@@ -53,6 +61,7 @@ class NotificationService
      */
     private function addNotification(string $message, string $type, int $code = 0)
     {
+        $this->start("addNotification");
         $notifications = $this->getNotifications(false);
 
         array_push($notifications, array(
@@ -62,6 +71,7 @@ class NotificationService
         ));
 
         $this->sessionStorageService->setSessionValue(SessionStorageKeys::NOTIFICATIONS, json_encode($notifications));
+        $this->track("addNotification");
     }
 
     /**
@@ -69,7 +79,9 @@ class NotificationService
      */
     public function log(string $message)
     {
+        $this->start("log");
         $this->addNotification($message, LogLevel::LOG);
+        $this->track("log");
     }
 
     /**
@@ -77,7 +89,9 @@ class NotificationService
      */
     public function info(string $message)
     {
+        $this->start("info");
         $this->addNotification($message, LogLevel::INFO);
+        $this->track("info");
     }
 
     /**
@@ -85,7 +99,9 @@ class NotificationService
      */
     public function warn(string $message)
     {
+        $this->start("warn");
         $this->addNotification($message, LogLevel::WARN);
+        $this->track("warn");
     }
 
     /**
@@ -93,7 +109,9 @@ class NotificationService
      */
     public function error(string $message)
     {
+        $this->start("error");
         $this->addNotification($message, LogLevel::ERROR);
+        $this->track("error");
     }
 
     /**
@@ -101,7 +119,9 @@ class NotificationService
      */
     public function success(string $message)
     {
+        $this->start("success");
         $this->addNotification($message, LogLevel::SUCCESS);
+        $this->track("success");
     }
 
     /**
@@ -110,6 +130,8 @@ class NotificationService
      */
     public function addNotificationCode($type, int $code = 0)
     {
+        $this->start("addNotification");
         $this->addNotification("", $type, $code);
+        $this->track("addNotification");
     }
 }

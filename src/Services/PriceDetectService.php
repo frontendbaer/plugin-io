@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use Plenty\Legacy\Services\Item\Variation\DetectSalesPriceService;
 use Plenty\Modules\Account\Contact\Models\Contact;
 use Plenty\Plugin\Application;
@@ -15,6 +16,8 @@ use IO\Services\BasketService;
  */
 class PriceDetectService
 {
+    use RuntimeTracker;
+
     private $classId = null;
     private $singleAccess = null;
     private $currency = null;
@@ -61,13 +64,15 @@ class PriceDetectService
                                 CheckoutService $checkoutService,
                                 BasketService $basketService)
     {
+        $this->start("constructor");
         $this->detectSalesPriceService = $detectSalesPriceService;
         $this->customerService = $customerService;
         $this->app = $app;
         $this->checkoutService = $checkoutService;
         $this->basketService = $basketService;
-        
+
         $this->init();
+        $this->track("constructor");
     }
     
     private function init()
@@ -87,6 +92,7 @@ class PriceDetectService
     
     public function getPriceIdsForCustomer()
     {
+        $this->start("getPriceIdsForCustomer");
         $this->detectSalesPriceService
             ->setAccountId(0)
             ->setAccountType($this->singleAccess)
@@ -97,7 +103,10 @@ class PriceDetectService
             ->setPlentyId($this->plentyId)
             ->setQuantity(1)
             ->setType(DetectSalesPriceService::PRICE_TYPE_DEFAULT);
-        
-        return $this->detectSalesPriceService->detect();
+
+        $result = $this->detectSalesPriceService->detect();
+        $this->track("getPriceIdsForCustomer");
+
+        return $result;
     }
 }

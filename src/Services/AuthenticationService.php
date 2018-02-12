@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use Plenty\Modules\Authentication\Contracts\ContactAuthenticationRepositoryContract;
 use IO\Constants\SessionStorageKeys;
 use IO\Services\SessionStorageService;
@@ -15,6 +16,8 @@ use IO\Services\CustomerPasswordResetService;
  */
 class AuthenticationService
 {
+    use RuntimeTracker;
+
 	/**
 	 * @var ContactAuthenticationRepositoryContract
 	 */
@@ -38,9 +41,11 @@ class AuthenticationService
      */
 	public function __construct(ContactAuthenticationRepositoryContract $contactAuthRepository, SessionStorageService $sessionStorage, CustomerPasswordResetService $customerPasswordResetService)
 	{
+	    $this->start("constructor");
 		$this->contactAuthRepository = $contactAuthRepository;
 		$this->sessionStorage = $sessionStorage;
 		$this->customerPasswordResetService = $customerPasswordResetService;
+	    $this->track("constructor");
 	}
 
     /**
@@ -50,11 +55,13 @@ class AuthenticationService
      */
 	public function login(string $email, string $password)
 	{
+	    $this->start("login");
 		$this->contactAuthRepository->authenticateWithContactEmail($email, $password);
 		$this->sessionStorage->setSessionValue(SessionStorageKeys::GUEST_WISHLIST_MIGRATION, true);
 		
 		$contactId = $this->customerPasswordResetService->getContactIdbyEmailAddress($email);
         $this->checkPasswordResetExpiration($contactId);
+        $this->track("login");
 	}
 
     /**
@@ -64,9 +71,11 @@ class AuthenticationService
      */
 	public function loginWithContactId(int $contactId, string $password)
 	{
+	    $this->start("loginWithContactId");
 		$this->contactAuthRepository->authenticateWithContactId($contactId, $password);
         $this->sessionStorage->setSessionValue(SessionStorageKeys::GUEST_WISHLIST_MIGRATION, true);
         $this->checkPasswordResetExpiration($contactId);
+	    $this->track("loginWithContactId");
 	}
 
     /**
@@ -74,6 +83,7 @@ class AuthenticationService
      */
 	public function logout()
 	{
+	    $this->start("logout");
         $this->contactAuthRepository->logout();
 
         /**
@@ -82,10 +92,12 @@ class AuthenticationService
         $basketService = pluginApp(BasketService::class);
         $basketService->setBillingAddressId(0);
         $basketService->setDeliveryAddressId(0);
+	    $this->track("logout");
 	}
-	
+
 	private function checkPasswordResetExpiration($contactId)
     {
+        $this->start("checkPasswordResetExpiration");
         if((int)$contactId > 0)
         {
             $existingPasswordResetEntry = $this->customerPasswordResetService->findExistingHash($contactId);
@@ -97,5 +109,6 @@ class AuthenticationService
                 }
             }
         }
+        $this->track("checkPasswordResetExpiration");
     }
 }

@@ -14,6 +14,7 @@ use IO\Builder\Item\Params\ItemColumnsParams;
 use IO\Constants\CrossSellingType;
 use IO\Constants\ItemConditionTexts;
 use IO\Constants\Language;
+use IO\Helper\RuntimeTracker;
 use IO\Services\ItemLoader\Loaders\ItemURLs;
 use IO\Services\ItemLoader\Services\ItemLoaderService;
 use IO\Services\ItemLoader\Loaders\Items;
@@ -45,6 +46,8 @@ use Plenty\Plugin\Events\Dispatcher;
  */
 class ItemService
 {
+    use RuntimeTracker;
+
 	/**
 	 * @var Application
 	 */
@@ -77,9 +80,11 @@ class ItemService
 		SessionStorageService $sessionStorage
 	)
 	{
-		$this->app            = $app;
-		$this->itemRepository = $itemRepository;
+	    $this->start("constructor");
+        $this->app            = $app;
+        $this->itemRepository = $itemRepository;
 		$this->sessionStorage = $sessionStorage;
+        $this->track("constructor");
 	}
 
 	/**
@@ -89,6 +94,7 @@ class ItemService
 	 */
 	public function getItem(int $itemId = 0):array
 	{
+	    $this->start("getItem");
 		//$languageMutator = pluginApp(LanguageMutator::class);
 		//$documentProcessor->addMutator($languageMutator);
 		//$attributeProcessor->addMutator($languageMutator);
@@ -118,7 +124,10 @@ class ItemService
 			->addFilter($clientFilter)
 			->addFilter($variationFilter);
 
-		return $elasticSearchRepo->execute();
+		$result = $elasticSearchRepo->execute();
+        $this->track("getItem");
+
+        return $result;
 	}
 
 	/**
@@ -128,6 +137,7 @@ class ItemService
 	 */
 	public function getItems(array $itemIds):array
 	{
+	    $this->start("getItems");
 		$documentProcessor = pluginApp(DocumentProcessor::class);
 		$documentSearch    = pluginApp(DocumentSearch::class, [$documentProcessor]);
 
@@ -148,7 +158,10 @@ class ItemService
 			->addFilter($clientFilter)
 			->addFilter($variationFilter);
 
-		return $elasticSearchRepo->execute();
+		$result = $elasticSearchRepo->execute();
+        $this->track("getItems");
+
+        return $result;
 	}
 
     /**
@@ -157,13 +170,16 @@ class ItemService
      */
     public function getItemImage(int $itemId = 0):string
     {
+        $this->start("getItemImage");
         $item = $this->getItem($itemId);
 
         if(is_array($item) && strlen($item['documents'][0]['data']['images']['item'][0]['path']))
         {
+            $this->track("getItemImage");
             return $item['documents'][0]['data']['images']['item'][0]['path'];
         }
 
+        $this->track("getItemImage");
         return '';
     }
 
@@ -174,6 +190,7 @@ class ItemService
 	 */
 	public function getVariation(int $variationId = 0):array
 	{
+	    $this->start("getVariation");
 		$documentProcessor = pluginApp(DocumentProcessor::class);
 		$documentSearch    = pluginApp(DocumentSearch::class, [$documentProcessor]);
 
@@ -199,7 +216,10 @@ class ItemService
 			->addFilter($clientFilter)
 			->addFilter($variationFilter);
 
-		return $elasticSearchRepo->execute();
+		$result = $elasticSearchRepo->execute();
+        $this->track("getVariation");
+
+        return $result;
 	}
 
 	/**
@@ -209,6 +229,7 @@ class ItemService
 	 */
 	public function getVariations(array $variationIds):array
 	{
+	    $this->start("getVariations");
 		$documentProcessor = pluginApp(DocumentProcessor::class);
 		$documentSearch    = pluginApp(DocumentSearch::class, [$documentProcessor]);
 
@@ -229,7 +250,10 @@ class ItemService
 			->addFilter($clientFilter)
 			->addFilter($variationFilter);
 
-		return $elasticSearchRepo->execute();
+		$result = $elasticSearchRepo->execute();
+        $this->track("getVariations");
+
+        return $result;
 	}
 
     /**
@@ -238,6 +262,7 @@ class ItemService
      */
     public function getVariationIds($itemId):array
     {
+        $this->start("getVariationIds");
         $variationIds = [];
 
         if((int)$itemId > 0)
@@ -275,6 +300,8 @@ class ItemService
             }
         }
 
+        $this->track("getVariationIds");
+
         return $variationIds;
     }
 
@@ -285,6 +312,7 @@ class ItemService
 	 */
 	public function getVariationList($itemId, bool $withPrimary = false):array
 	{
+	    $this->start("getVariationList");
 		$variationIds = [];
 
 		if((int)$itemId > 0)
@@ -329,7 +357,9 @@ class ItemService
 			}
 		}
 
-		return $variationIds;
+        $this->track("getVariationList");
+
+        return $variationIds;
 	}
 
     /**
@@ -339,6 +369,7 @@ class ItemService
      */
     public function getVariationImage(int $variationId = 0, string $imageAccessor = 'urlPreview'):string
     {
+        $this->start("getVariationImage");
         /**
          * @var ItemLoaderService $itemLoaderService
          */
@@ -367,12 +398,16 @@ class ItemService
 
             if(!is_null($variationImage['url']))
             {
+                $this->track("getVariationImage");
+
                 return $variationImage['url'];
             }
 
+            $this->track("getVariationImage");
             return '';
         }
 
+        $this->track("getVariationImage");
         return '';
     }
 
@@ -385,6 +420,7 @@ class ItemService
 	 */
 	public function getItemForCategory(int $catID, $params = [], int $page = 1):array
 	{
+	    $this->start("getItemForCategory");
 		$documentProcessor = pluginApp(DocumentProcessor::class);
 		$documentSearch    = pluginApp(DocumentSearch::class, [$documentProcessor]);
 
@@ -410,8 +446,11 @@ class ItemService
 			->addFilter($categoryFilter)
 			->setPage($page, $params['itemsPerPage']);
 
-		return $elasticSearchRepo->execute();
-	}
+		$result = $elasticSearchRepo->execute();
+        $this->track("getItemForCategory");
+
+        return $result;
+    }
 
 	/**
 	 * List the attributes of an item variation
@@ -420,6 +459,7 @@ class ItemService
 	 */
 	public function getVariationAttributeMap($itemId = 0):array
 	{
+	    $this->start("getVariationAttributeMap");
 		$variations = [];
 
 		if((int)$itemId > 0)
@@ -482,7 +522,9 @@ class ItemService
 			}
 		}
 
-		return $variations;
+        $this->track("getVariationAttributeMap");
+
+        return $variations;
 	}
 
     /**
@@ -491,6 +533,7 @@ class ItemService
      */
     public function getVariationIsSalable($variationId = 0):Bool
     {
+        $this->start("getVariationIsSalable");
         $isSalable = false;
 
         /** @var ItemColumnBuilder $columnBuilder */
@@ -527,6 +570,8 @@ class ItemService
 
         $isSalable = $record['variationBase']['limitOrderByStockSelect'] == 1 && $record['variationStock']['stockPhysical'] <= 0;
 
+        $this->track("getVariationIsSalable");
+
         return $isSalable;
     }
 
@@ -536,6 +581,7 @@ class ItemService
 	 */
 	public function getAttributeNameMap($itemId = 0):array
 	{
+	    $this->start("getAttributeNameMap");
 		$attributeList = [];
 
 		if((int)$itemId > 0)
@@ -591,7 +637,9 @@ class ItemService
 			}
 		}
 
-		return $attributeList;
+        $this->track("getAttributeNameMap");
+
+        return $attributeList;
 	}
 
 	/**
@@ -602,6 +650,7 @@ class ItemService
 	 */
 	public function getItemURL(int $itemId):Record
 	{
+	    $this->start("getItemURL");
 		/** @var ItemColumnBuilder $columnBuilder */
 		$columnBuilder = pluginApp(ItemColumnBuilder::class);
 		$columns       = $columnBuilder
@@ -625,7 +674,10 @@ class ItemService
 			->build();
    
 		$record = $this->itemRepository->search($columns, $filter, $params)->current();
-		return $record;
+
+        $this->track("getItemURL");
+
+        return $record;
 	}
 
 	/**
@@ -635,6 +687,7 @@ class ItemService
 	 */
 	public function getAttributeName(int $attributeId = 0):string
 	{
+	    $this->start("getAttributeName");
 		/** @var AttributeNameRepositoryContract $attributeNameRepository */
 		$attributeNameRepository = pluginApp(AttributeNameRepositoryContract::class);
 
@@ -646,7 +699,9 @@ class ItemService
 			$name = $attribute->name;
 		}
 
-		return $name;
+        $this->track("getAttributeName");
+
+        return $name;
 	}
 
 	/**
@@ -656,6 +711,7 @@ class ItemService
 	 */
 	public function getAttributeValueName(int $attributeValueId = 0):string
 	{
+	    $this->start("getAttributeValueName");
 		/** @var AttributeValueNameRepositoryContract $attributeValueNameRepository */
 		$attributeValueNameRepository = pluginApp(AttributeValueNameRepositoryContract::class);
 
@@ -665,8 +721,10 @@ class ItemService
 		{
 			$name = $attributeValue->name;
 		}
+        $this->track("getAttributeValueName");
 
-		return $name;
+
+        return $name;
 	}
 	
 	/**
@@ -677,6 +735,7 @@ class ItemService
 	 */
 	public function getItemCrossSellingList($itemId = 0, string $crossSellingType = 'similar'):array
 	{
+	    $this->start("getItemCrossSellingList");
 		$crossSellingItems = [];
 
 		if((int)$itemId > 0)
@@ -724,8 +783,9 @@ class ItemService
 			}
 		}
 
+        $this->track("getItemCrossSellingList");
 
-		return $crossSellingItems;
+        return $crossSellingItems;
 	}
 	
 	/**
@@ -744,6 +804,7 @@ class ItemService
 	 */
 	public function getLatestItems(int $limit = 5, int $categoryId = 0)
 	{
+	    $this->start("getLatestItems");
 		/** @var ItemColumnBuilder $columnBuilder */
 		$columnBuilder = pluginApp(ItemColumnBuilder::class);
 
@@ -776,7 +837,10 @@ class ItemService
 			->withParam(ItemColumnsParams::LIMIT, $limit)
 			->build();
 
-		return $this->itemRepository->search($columns, $filter, $params);
+		$result = $this->itemRepository->search($columns, $filter, $params);
+        $this->track("getLatestItems");
+
+        return $result;
 
 	}
 	
@@ -788,6 +852,7 @@ class ItemService
 	 */
 	public function searchItems(string $searchString, $params = [], int $page = 1):array
 	{
+	    $this->start("searchItems");
         /**
          * @var SessionStorageService $sessionStorage
          */
@@ -819,16 +884,22 @@ class ItemService
 			->addFilter($searchFilter)
 			->setPage($page, $params['itemsPerPage']);
 
-		return $elasticSearchRepo->execute();
+        $result = $elasticSearchRepo->execute();
+        $this->track("searchItems");
+
+        return $result;
+
 	}
 
     /**
      *
      */
 	public function getAdditionalItemSorting(){
+	    $this->start("getAdditionalItemSorting");
 	    /** @var Dispatcher $dispatcher */
 	    $dispatcher = pluginApp(Dispatcher::class);
 	    $dispatcher->fire('IO.initAdditionalSorting', [$this]);
+	    $this->track("getAdditionalItemSorting");
 	    return $this->additionalItemSortingMap;
     }
 
@@ -837,7 +908,9 @@ class ItemService
      * @param string $translationKey
      */
     public function addAdditionalItemSorting($key, $translationKey){
+        $this->start("addAdditionalItemSorting");
         $this->additionalItemSortingMap[$key] = $translationKey;
+        $this->track("addAdditionalItemSorting");
     }
     
     /**

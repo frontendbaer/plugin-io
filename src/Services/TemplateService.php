@@ -2,6 +2,7 @@
 
 namespace IO\Services;
 
+use IO\Helper\RuntimeTracker;
 use Plenty\Plugin\Templates\Twig;
 
 /**
@@ -10,6 +11,8 @@ use Plenty\Plugin\Templates\Twig;
  */
 class TemplateService
 {
+    use RuntimeTracker;
+
     public static $currentTemplate = "";
 
     public function getCurrentTemplate():string
@@ -72,8 +75,9 @@ class TemplateService
     
     public function renderTemplate($template, $params)
     {
+        $this->start("renderTemplate");
         $renderedTemplate = '';
-    
+
         if (strlen($template))
         {
             /**
@@ -82,7 +86,8 @@ class TemplateService
             $twig             = pluginApp(Twig::class);
             $renderedTemplate = $twig->render($template, $params);
         }
-        
+
+        $this->track("renderTemplate");
         return $renderedTemplate;
     }
 }
