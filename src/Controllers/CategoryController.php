@@ -1,6 +1,7 @@
 <?php //strict
 namespace IO\Controllers;
 
+use IO\Helper\RuntimeTracker;
 use Plenty\Modules\Category\Contracts\CategoryRepositoryContract;
 use Plenty\Modules\Item\DataLayer\Contracts\ItemDataLayerRepositoryContract;
 use Plenty\Modules\Category\Models\Category;
@@ -13,6 +14,7 @@ use IO\Helper\CategoryKey;
  */
 class CategoryController extends LayoutController
 {
+    use RuntimeTracker;
 
 	/**
 	 * Prepare and render the data for categories
@@ -32,6 +34,7 @@ class CategoryController extends LayoutController
 		$lvl5 = null,
 		$lvl6 = null):string
 	{
+	    $this->start("showCategory");
 		// Get the current category
 		if($lvl1 === null)
 		{
@@ -44,7 +47,8 @@ class CategoryController extends LayoutController
 		{
 			$currentCategory = $this->categoryRepo->findCategoryByUrl($lvl1, $lvl2, $lvl3, $lvl4, $lvl5, $lvl6);
 		}
-        
+
+	    $this->track("showCategory");
         return $this->renderCategory($currentCategory);
 	}
 

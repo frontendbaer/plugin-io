@@ -5,6 +5,7 @@ namespace IO\Providers;
 use IO\Api\Resources\CouponResource;
 use IO\Extensions\TwigIOExtension;
 use IO\Extensions\TwigServiceProvider;
+use IO\Helper\RuntimeTracker;
 use IO\Middlewares\Middleware;
 use IO\Middlewares\RuntimeTrackerMiddleware;
 use IO\Services\AuthenticationService;
@@ -50,11 +51,14 @@ use Plenty\Plugin\Templates\Twig;
  */
 class IOServiceProvider extends ServiceProvider
 {
+    use RuntimeTracker;
+
     /**
      * Register the core functions
      */
     public function register()
     {
+        $this->start("register");
         $this->getApplication()->register(ContentCachingProvider::class);
         $this->addGlobalMiddleware(Middleware::class);
         $this->addGlobalMiddleware( RuntimeTrackerMiddleware::class );
@@ -102,6 +106,8 @@ class IOServiceProvider extends ServiceProvider
         //TODO check ES ready state
         $this->getApplication()->bind(ItemLoaderFactory::class, ItemLoaderFactoryES::class);
         $this->getApplication()->singleton(FacetExtensionContainer::class);
+        $this->track("register");
+
     }
 
     /**
@@ -110,10 +116,12 @@ class IOServiceProvider extends ServiceProvider
      */
     public function boot(Twig $twig)
     {
+        $this->start("boot");
         $twig->addExtension(TwigServiceProvider::class);
         $twig->addExtension(TwigIOExtension::class);
         $twig->addExtension('Twig_Extensions_Extension_Intl');
         $twig->addExtension(TwigLoaderPresets::class);
+        $this->track("boot");
     }
 
     private function registerSingletons( $classes )

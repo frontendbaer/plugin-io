@@ -2,6 +2,7 @@
 
 namespace IO\Providers;
 
+use IO\Helper\RuntimeTracker;
 use Plenty\Plugin\ConfigRepository;
 use Plenty\Plugin\RouteServiceProvider;
 use Plenty\Plugin\Routing\Router;
@@ -14,6 +15,8 @@ use IO\Services\TemplateConfigService;
  */
 class IORouteServiceProvider extends RouteServiceProvider
 {
+    use RuntimeTracker;
+
 	public function register()
 	{
 	}
@@ -25,6 +28,7 @@ class IORouteServiceProvider extends RouteServiceProvider
      */
 	public function map(Router $router, ApiRouter $api, ConfigRepository $config)
 	{
+	    $this->start("map");
         $templateConfigService = pluginApp(TemplateConfigService::class);
 
 		$api->version(['v1'], ['namespace' => 'IO\Api\Resources'], function ($api)
@@ -211,5 +215,7 @@ class IORouteServiceProvider extends RouteServiceProvider
         {
             $router->get('{level1?}/{level2?}/{level3?}/{level4?}/{level5?}/{level6?}', 'IO\Controllers\CategoryController@showCategory');
         }
-	}
+
+        $this->track("map");
+    }
 }

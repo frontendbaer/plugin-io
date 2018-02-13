@@ -134,7 +134,7 @@ class Items implements ItemLoaderContract
             $textFilter->hasNameInLanguage($textFilterLanguage, $textFilterType);
         }
 
-        $this->tack("getFilterStack");
+        $this->track("getFilterStack");
 
         return [
             $clientFilter,

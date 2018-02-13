@@ -3,6 +3,7 @@ namespace IO\Controllers;
 
 use IO\Helper\CategoryKey;
 use IO\Helper\CategoryMap;
+use IO\Helper\RuntimeTracker;
 use IO\Helper\TemplateContainer;
 use IO\Services\CategoryService;
 use IO\Services\TemplateService;
@@ -20,7 +21,7 @@ use Plenty\Plugin\Templates\Twig;
  */
 abstract class LayoutController extends Controller
 {
-
+    use RuntimeTracker;
 	/**
 	 * @var Application
 	 */
@@ -68,12 +69,14 @@ abstract class LayoutController extends Controller
 	 */
 	public function __construct(Application $app, Twig $twig, Dispatcher $event, CategoryRepositoryContract $categoryRepo, CategoryMap $categoryMap, CategoryService $categoryService)
 	{
+	    $this->start("constructor");
 		$this->app             = $app;
 		$this->twig            = $twig;
 		$this->event           = $event;
 		$this->categoryRepo    = $categoryRepo;
 		$this->categoryMap     = $categoryMap;
 		$this->categoryService = $categoryService;
+	    $this->track("constructor");
 	}
 
 	/**
@@ -96,6 +99,7 @@ abstract class LayoutController extends Controller
 	 */
 	protected function renderCategory($category):string
 	{
+	    $this->start("renderCategory");
 		if($category === null)
 		{
 			$category = $this->categoryRepo->get(
@@ -110,6 +114,7 @@ abstract class LayoutController extends Controller
 
 		$this->categoryService->setCurrentCategory($category);
 
+	    $this->track("renderCategory");
 		return $this->renderTemplate(
 			"tpl.category." . $category->type,
 			[
@@ -140,6 +145,7 @@ abstract class LayoutController extends Controller
 	 */
 	protected function buildTemplateContainer(string $templateEvent, array $templateData = []):TemplateContainer
 	{
+	    $this->start("buildTemplateContainer");
 		/** @var TemplateContainer $templateContainer */
 		$templateContainer = pluginApp(TemplateContainer::class);
 		$templateContainer->setTemplateKey($templateEvent);
@@ -158,7 +164,10 @@ abstract class LayoutController extends Controller
 			// Prepare the global data only if the template is available
 			$this->prepareTemplateData($templateContainer, $templateData);
 		}
-		return $templateContainer;
+
+        $this->track("buildTemplateContainer");
+
+        return $templateContainer;
 	}
 
 	/**
@@ -171,6 +180,7 @@ abstract class LayoutController extends Controller
 	 */
 	protected function renderTemplate(string $templateEvent, array $templateData = []):string
 	{
+	    $this->start("renderTemplate");
 		$templateContainer = $this->buildTemplateContainer($templateEvent, $templateData);
 		
 		if($templateContainer->hasTemplate())
@@ -182,13 +192,16 @@ abstract class LayoutController extends Controller
 
 
 			// Render the received plugin
+            $this->track("renderTemplate");
 			return $this->renderTemplateContainer($templateContainer);
 		}
 		else
 		{
+            $this->track("renderTemplate");
 			return $this->abort(404, "Template not found.");
 		}
-	}
+
+    }
 
 	/**
 	 * @param TemplateContainer $templateContainer
@@ -197,10 +210,14 @@ abstract class LayoutController extends Controller
 	protected function renderTemplateContainer(TemplateContainer $templateContainer)
 	{
 		// Render the received plugin
-		return $this->twig->render(
+        $this->start("renderTemplateContainer");
+		$rendered = $this->twig->render(
 			$templateContainer->getTemplate(),
 			$templateContainer->getTemplateData()
 		);
+
+        $this->track("renderTemplateContainer");
+		return $rendered;
 	}
 
 }
