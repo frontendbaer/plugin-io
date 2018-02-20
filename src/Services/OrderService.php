@@ -20,6 +20,7 @@ use IO\Builder\Order\OrderOptionSubType;
 use IO\Builder\Order\AddressType;
 use IO\Constants\SessionStorageKeys;
 use IO\Services\TemplateConfigService;
+use Plenty\Modules\Authorization\Services\AuthHelper;
 
 
 /**
@@ -71,13 +72,18 @@ class OrderService
      */
 	public function placeOrder():LocalizedOrder
 	{
+	    /** @var CheckoutService $checkoutService */
         $checkoutService = pluginApp(CheckoutService::class);
+        
+        /** @var CustomerService $customerService */
         $customerService = pluginApp(CustomerService::class);
         
+        $basket = $this->basketService->getBasket();
+        
         $couponCode = null;
-        if(strlen($this->basketService->getBasket()->couponCode))
+        if(strlen($basket->couponCode))
         {
-            $couponCode = $this->basketService->getBasket()->couponCode;
+            $couponCode = $basket->couponCode;
         }
         
 		$order = pluginApp(OrderBuilder::class)->prepare(OrderType::ORDER)
@@ -99,6 +105,8 @@ class OrderService
 
         // reset basket after order was created
         $this->basketService->resetBasket();
+        $customerService->resetGuestAddresses();
+        
         
         return LocalizedOrder::wrap( $order, "de" );
 	}
@@ -238,10 +246,11 @@ class OrderService
         
         return $orders;
     }
-
+    
     /**
      * Get the last order created by the current contact
      * @param int $contactId
+     * @return LocalizedOrder|null
      */
     public function getLatestOrderForContact( int $contactId )
     {
@@ -360,7 +369,7 @@ class OrderService
         {
             foreach($order['orderItems'] as $key => $orderItem)
             {
-                if(array_key_exists($orderItem['itemVariationId'], $items))
+                if(array_key_exists($orderItem['itemVariationId'], $items) && (int)$items[$orderItem['itemVariationId']] > 0)
                 {
                     $returnQuantity = (int)$items[$orderItem['itemVariationId']];
                     
@@ -375,10 +384,9 @@ class OrderService
                         'referenceOrderItemId' =>   $order['orderItems'][$key]['id'],
                         'referenceType' => 'parent'
                     ];
-
+                    
                     unset($order['orderItems'][$key]['id']);
                     unset($order['orderItems'][$key]['orderId']);
-                    
                 }
                 else
                 {
@@ -438,7 +446,6 @@ class OrderService
         {
             foreach($allReturns as $returnKey => $return)
             {
-                //$return = $return['order'];
                 foreach($return['orderReferences'] as $reference)
                 {
                     if($reference['referenceType'] == 'parent' && $reference['referenceOrderId'] == $orderId)
@@ -475,6 +482,10 @@ class OrderService
                     {
                         $orderItem['quantity'] = $newQuantity;
                         $newOrderItems[] = $orderItem;
+                    }
+                    else
+                    {
+                        $orderItem->quantity = 0;
                     }
                 }
                 
@@ -523,7 +534,15 @@ class OrderService
 		}
 		if($orderId != null)
 		{
-			$order = $this->orderRepository->findOrderById($orderId);
+            /** @var AuthHelper $authHelper */
+            $authHelper = pluginApp(AuthHelper::class);
+            $orderRepo = $this->orderRepository;
+            
+            $order = $authHelper->processUnguarded( function() use ($orderId, $orderRepo)
+            {
+                return $orderRepo->findOrderById($orderId);
+            });
+			
 			if ($order->paymentStatus !== OrderPaymentStatus::UNPAID)
 			{
 				// order was paid
@@ -552,8 +571,15 @@ class OrderService
         if((int)$orderId > 0)
         {
             $currentPaymentMethodId = 0;
-            
-            $order = $this->orderRepository->findOrderById($orderId);
+    
+            /** @var AuthHelper $authHelper */
+            $authHelper = pluginApp(AuthHelper::class);
+            $orderRepo = $this->orderRepository;
+    
+            $order = $authHelper->processUnguarded( function() use ($orderId, $orderRepo)
+            {
+                return $orderRepo->findOrderById($orderId);
+            });
         
             $newOrderProperties = [];
             $orderProperties = $order->properties;
@@ -575,7 +601,11 @@ class OrderService
             {
                 if($this->frontendPaymentMethodRepository->getPaymentMethodSwitchableFromById($currentPaymentMethodId, $orderId) && $this->frontendPaymentMethodRepository->getPaymentMethodSwitchableToById($paymentMethodId))
                 {
-                    $order = $this->orderRepository->updateOrder(['properties' => $newOrderProperties], $orderId);
+                    $order = $authHelper->processUnguarded( function() use ($orderId, $newOrderProperties, $orderRepo)
+                    {
+                        return $orderRepo->updateOrder(['properties' => $newOrderProperties], $orderId);
+                    });
+                    
                     if(!is_null($order))
                     {
                         return LocalizedOrder::wrap( $order, "de" );

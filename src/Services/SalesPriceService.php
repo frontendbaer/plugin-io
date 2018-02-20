@@ -4,9 +4,13 @@ namespace IO\Services;
 
 use Plenty\Modules\Account\Contact\Models\Contact;
 use Plenty\Modules\Item\SalesPrice\Contracts\SalesPriceSearchRepositoryContract;
+use Plenty\Modules\Item\SalesPrice\Models\SalesPrice;
 use Plenty\Modules\Item\SalesPrice\Models\SalesPriceSearchRequest;
 use Plenty\Modules\Item\SalesPrice\Models\SalesPriceSearchResponse;
 use Plenty\Plugin\Application;
+use IO\Services\CustomerService;
+use IO\Services\CheckoutService;
+use IO\Services\BasketService;
 
 class SalesPriceService
 {
@@ -14,12 +18,14 @@ class SalesPriceService
     private $salesPriceSearchRepo;
     private $customerService;
     private $checkoutService;
+    private $basketService;
 
     private $classId = null;
     private $singleAccess = null;
     private $currency = null;
     private $plentyId = null;
     private $shippingCountryId = null;
+    private $referrerId = null;
 
     /**
      * SalesPriceService constructor.
@@ -32,13 +38,15 @@ class SalesPriceService
         Application $app,
         SalesPriceSearchRepositoryContract $salesPriceSearchRepo,
         CustomerService $customerService,
-        CheckoutService $checkoutService
+        CheckoutService $checkoutService,
+        BasketService $basketService
     )
     {
         $this->app                  = $app;
         $this->salesPriceSearchRepo = $salesPriceSearchRepo;
         $this->customerService      = $customerService;
         $this->checkoutService      = $checkoutService;
+        $this->basketService        = $basketService;
 
         $this->init();
     }
@@ -85,6 +93,7 @@ class SalesPriceService
         $this->currency          = $this->checkoutService->getCurrency();
         $this->shippingCountryId = $this->checkoutService->getShippingCountryId();
         $this->plentyId          = $this->app->getPlentyId();
+        $this->referrerId        = $this->basketService->getBasket()->referrerId;
     }
 
     /**
@@ -105,7 +114,8 @@ class SalesPriceService
          */
         $salesPrice = $this->salesPriceSearchRepo->search($salesPriceSearchRequest);
 
-        return $salesPrice;
+
+        return $this->applyCurrencyConversion($salesPrice);
     }
     
     /**
@@ -125,10 +135,32 @@ class SalesPriceService
          * @var array $salesPrices
          */
         $salesPrices = $this->salesPriceSearchRepo->searchAll($salesPriceSearchRequest);
-        
-        return $salesPrices;
+
+        $convertedSalesPrices = [];
+        foreach( $salesPrices as $salesPrice )
+        {
+            $convertedSalesPrices[] = $this->applyCurrencyConversion( $salesPrice );
+        }
+
+        return $convertedSalesPrices;
     }
-    
+
+    public function applyCurrencyConversion( SalesPriceSearchResponse $salesPrice ): SalesPriceSearchResponse
+    {
+        $salesPrice->price                      = $salesPrice->price * $salesPrice->conversionFactor;
+        $salesPrice->priceNet                   = $salesPrice->priceNet * $salesPrice->conversionFactor;
+//        $salesPrice->basePrice                  = $salesPrice->basePrice * $salesPrice->conversionFactor;
+//        $salesPrice->basePriceNet               = $salesPrice->basePriceNet * $salesPrice->conversionFactor;
+//        $salesPrice->unitPrice                  = $salesPrice->unitPrice * $salesPrice->conversionFactor;
+//        $salesPrice->unitPriceNet               = $salesPrice->unitPriceNet * $salesPrice->conversionFactor;
+        $salesPrice->customerClassDiscount      = $salesPrice->customerClassDiscount * $salesPrice->conversionFactor;
+        $salesPrice->customerClassDiscountNet   = $salesPrice->customerClassDiscountNet * $salesPrice->conversionFactor;
+        $salesPrice->categoryDiscount           = $salesPrice->categoryDiscount * $salesPrice->conversionFactor;
+        $salesPrice->categoryDiscountNet        = $salesPrice->categoryDiscountNet * $salesPrice->conversionFactor;
+
+        return $salesPrice;
+    }
+
     private  function getSearchRequest(int $variationId, $type, int $quantity)
     {
         /**
@@ -144,7 +176,7 @@ class SalesPriceService
         $salesPriceSearchRequest->customerClassId = $this->classId;
         $salesPriceSearchRequest->plentyId        = $this->plentyId;
         $salesPriceSearchRequest->quantity        = $quantity;
-        $salesPriceSearchRequest->referrerId      = 1; //TODO set to real referrer
+        $salesPriceSearchRequest->referrerId      = $this->referrerId;
         $salesPriceSearchRequest->type            = $type;
         
         return $salesPriceSearchRequest;

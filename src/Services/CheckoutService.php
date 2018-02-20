@@ -3,17 +3,22 @@
 namespace IO\Services;
 
 use IO\Builder\Order\AddressType;
+use IO\Helper\LanguageMap;
+use IO\Helper\MemoryCache;
 use Plenty\Modules\Basket\Events\Basket\AfterBasketChanged;
 use Plenty\Modules\Frontend\Events\ValidateCheckoutEvent;
 use Plenty\Modules\Frontend\PaymentMethod\Contracts\FrontendPaymentMethodRepositoryContract;
 use Plenty\Modules\Frontend\Contracts\Checkout;
 use Plenty\Modules\Basket\Contracts\BasketRepositoryContract;
 use Plenty\Modules\Frontend\Session\Storage\Contracts\FrontendSessionStorageFactoryContract;
+use Plenty\Modules\Order\Currency\Contracts\CurrencyRepositoryContract;
 use Plenty\Modules\Payment\Events\Checkout\GetPaymentMethodContent;
 use Plenty\Modules\Payment\Method\Contracts\PaymentMethodRepositoryContract;
 use Plenty\Modules\Order\Shipping\Contracts\ParcelServicePresetRepositoryContract;
 use IO\Constants\SessionStorageKeys;
 use IO\Services\BasketService;
+use Plenty\Plugin\ConfigRepository;
+use Plenty\Plugin\Application;
 use Plenty\Plugin\Events\Dispatcher;
 use Plenty\Plugin\Translation\Translator;
 
@@ -23,6 +28,8 @@ use Plenty\Plugin\Translation\Translator;
  */
 class CheckoutService
 {
+    use MemoryCache;
+
     /**
      * @var FrontendPaymentMethodRepositoryContract
      */
@@ -75,6 +82,7 @@ class CheckoutService
     {
         return [
             "currency" => $this->getCurrency(),
+            "currencyList" => $this->getCurrencyList(),
             "methodOfPaymentId" => $this->getMethodOfPaymentId(),
             "methodOfPaymentList" => $this->getMethodOfPaymentList(),
             "shippingCountryId" => $this->getShippingCountryId(),
@@ -92,25 +100,30 @@ class CheckoutService
      */
     public function getCurrency(): string
     {
-        $currency = (string)$this->sessionStorage->getPlugin()->getValue(SessionStorageKeys::CURRENCY);
-        if ($currency === null || $currency === "") {
-            /** @var SessionStorageService $sessionService */
-            $sessionService = pluginApp(SessionStorageService::class);
+        return $this->fromMemoryCache(
+            "currency",
+            function() {
+                $currency = (string)$this->sessionStorage->getPlugin()->getValue(SessionStorageKeys::CURRENCY);
+                if ($currency === null || $currency === "") {
+                    /** @var SessionStorageService $sessionService */
+                    $sessionService = pluginApp(SessionStorageService::class);
 
-            /** @var WebstoreConfigurationService $webstoreConfig */
-            $webstoreConfig = pluginApp(WebstoreConfigurationService::class);
+                    /** @var WebstoreConfigurationService $webstoreConfig */
+                    $webstoreConfig = pluginApp(WebstoreConfigurationService::class);
 
-            $currency = 'EUR';
+                    $currency = 'EUR';
 
-            if (
-                is_array($webstoreConfig->getWebstoreConfig()->defaultCurrencyList) &&
-                array_key_exists($sessionService->getLang(), $webstoreConfig->getWebstoreConfig()->defaultCurrencyList)
-            ) {
-                $currency = $webstoreConfig->getWebstoreConfig()->defaultCurrencyList[$sessionService->getLang()];
+                    if (
+                        is_array($webstoreConfig->getWebstoreConfig()->defaultCurrencyList) &&
+                        array_key_exists($sessionService->getLang(), $webstoreConfig->getWebstoreConfig()->defaultCurrencyList)
+                    ) {
+                        $currency = $webstoreConfig->getWebstoreConfig()->defaultCurrencyList[$sessionService->getLang()];
+                    }
+                    $this->setCurrency($currency);
+                }
+                return $currency;
             }
-            $this->setCurrency($currency);
-        }
-        return $currency;
+        );
     }
 
     /**
@@ -120,6 +133,81 @@ class CheckoutService
     public function setCurrency(string $currency)
     {
         $this->sessionStorage->getPlugin()->setValue(SessionStorageKeys::CURRENCY, $currency);
+        $this->checkout->setCurrency($currency);
+    }
+
+    public function getCurrencyList()
+    {
+        /** @var CurrencyRepositoryContract $currencyRepository */
+        $currencyRepository = pluginApp( CurrencyRepositoryContract::class );
+
+        $currencyList = [];
+        $locale = LanguageMap::getLocale();
+
+        foreach( $currencyRepository->getCurrencyList() as $currency )
+        {
+            $formatter = numfmt_create(
+                $locale . "@currency=" . $currency->currency,
+                \NumberFormatter::CURRENCY
+            );
+            $currencyList[] = [
+                "name" => $currency->currency,
+                "symbol" => $formatter->getSymbol( \NumberFormatter::CURRENCY_SYMBOL )
+            ];
+        }
+        return $currencyList;
+    }
+
+
+    public function getCurrencyData()
+    {
+        return $this->fromMemoryCache(
+            "currencyData",
+            function() {
+                $currency = $this->getCurrency();
+                $locale = LanguageMap::getLocale();
+
+                $formatter = numfmt_create(
+                    $locale . "@currency=" . $currency,
+                    \NumberFormatter::CURRENCY
+                );
+
+                return [
+                    "name" => $currency,
+                    "symbol" => $formatter->getSymbol( \NumberFormatter::CURRENCY_SYMBOL )
+                ];
+            }
+        );
+    }
+
+    public function getCurrencyPattern()
+    {
+        $currency = $this->getCurrency();
+        $locale = LanguageMap::getLocale();
+        $configRepository = pluginApp( ConfigRepository::class );
+
+        $formatter = numfmt_create(
+            $locale . "@currency=" . $currency,
+            \NumberFormatter::CURRENCY
+        );
+
+        if($configRepository->get('IO.format.use_locale_currency_format') === "0")
+        {
+            $formatter->setSymbol(
+                \NumberFormatter::MONETARY_SEPARATOR_SYMBOL,
+                $configRepository->get('IO.format.separator_decimal')
+            );
+            $formatter->setSymbol(
+                \NumberFormatter::MONETARY_GROUPING_SEPARATOR_SYMBOL,
+                $configRepository->get('IO.format.separator_thousands')
+            );
+        }
+
+        return [
+            "separator_decimal" => $formatter->getSymbol(\NumberFormatter::MONETARY_SEPARATOR_SYMBOL),
+            "separator_thousands" => $formatter->getSymbol(\NumberFormatter::MONETARY_GROUPING_SEPARATOR_SYMBOL),
+            "pattern" => $formatter->getPattern()
+        ];
     }
 
     /**
@@ -233,6 +321,7 @@ class CheckoutService
             $paymentData['description'] = $this->frontendPaymentMethodRepository->getPaymentMethodDescription($paymentMethod, $lang);
             $paymentData['sourceUrl']   = $this->frontendPaymentMethodRepository->getPaymentMethodSourceUrl($paymentMethod);
             $paymentData['key']         = $paymentMethod->pluginKey;
+            $paymentData['isSelectable']= $this->frontendPaymentMethodRepository->getPaymentMethodIsSelectable($paymentMethod);
             $paymentDataList[]          = $paymentData;
         }
         return $paymentDataList;
@@ -244,8 +333,35 @@ class CheckoutService
      */
     public function getShippingProfileList()
     {
+        /** @var SessionStorageService $sessionService */
+        $sessionService = pluginApp(SessionStorageService::class);
+        $showNetPrice   = $sessionService->getCustomer()->showNetPrice;
+
+        /** @var ParcelServicePresetRepositoryContract $parcelServicePresetRepo */
+        $parcelServicePresetRepo = pluginApp(ParcelServicePresetRepositoryContract::class);
+
         $contact = $this->customerService->getContact();
-        return pluginApp(ParcelServicePresetRepositoryContract::class)->getLastWeightedPresetCombinations($this->basketRepository->load(), $contact->classId);
+        $params  = [
+            'countryId'  => $this->getShippingCountryId(),
+            'webstoreId' => pluginApp(Application::class)->getWebstoreId(),
+        ];
+        $list    = $parcelServicePresetRepo->getLastWeightedPresetCombinations($this->basketRepository->load(), $contact->classId, $params);
+
+        if ($showNetPrice) {
+            /** @var BasketService $basketService */
+            $basketService = pluginApp(BasketService::class);
+            $maxVatValue   = $basketService->getMaxVatValue();
+
+            if (is_array($list)) {
+                foreach ($list as $key => $shippingProfile) {
+                    if (isset($shippingProfile['shippingAmount'])) {
+                        $list[$key]['shippingAmount'] = (100.0 * $shippingProfile['shippingAmount']) / (100.0 + $maxVatValue);
+                    }
+                }
+            }
+        }
+
+        return $list;
     }
 
     /**

@@ -2,6 +2,9 @@
 
 namespace IO\Extensions\Filters;
 
+use IO\Helper\LanguageMap;
+use IO\Helper\MemoryCache;
+use IO\Services\TemplateConfigService;
 use Plenty\Plugin\ConfigRepository;
 use IO\Extensions\AbstractFilter;
 
@@ -11,6 +14,8 @@ use IO\Extensions\AbstractFilter;
  */
 class NumberFormatFilter extends AbstractFilter
 {
+    use MemoryCache;
+
 	/**
 	 * @var ConfigRepository
 	 */
@@ -91,36 +96,45 @@ class NumberFormatFilter extends AbstractFilter
      * Format the given value to currency
      * @param $value
      * @param $currencyISO
-     * @param bool $useCurrencySymbol
      * @return string
      */
-    public function formatMonetary($value, $currencyISO, $useCurrencySymbol = true ):string
+    public function formatMonetary($value, $currencyISO):string
     {
         if(!is_null($value) && !is_null($currencyISO) && strlen($currencyISO))
         {
             $value = $this->trimNewlines($value);
             $currencyISO = $this->trimNewlines($currencyISO);
 
-            $locale            = 'de_DE';
+            $formatter = $this->fromMemoryCache(
+                "formatter.$currencyISO",
+                function() use ($currencyISO) {
+                    $locale            = LanguageMap::getLocale();
 
-            $formatter = numfmt_create($locale, \NumberFormatter::CURRENCY);
+                    $formatter = numfmt_create($locale, \NumberFormatter::CURRENCY);
 
-            if($useCurrencySymbol)
-            {
-                $formatter->setTextAttribute(\NumberFormatter::CURRENCY_CODE, $currencyISO);
-            }
-            else
-            {
-                $formatter->setSymbol(\NumberFormatter::CURRENCY_SYMBOL, $currencyISO);
-            }
+                    /** @var TemplateConfigService $templateConfigService */
+                    $templateConfigService = pluginApp( TemplateConfigService::class );
 
-            if($this->config->get('IO.format.use_locale_currency_format') === "0")
-            {
-                $decimal_separator   = $this->config->get('IO.format.separator_decimal');
-                $thousands_separator = $this->config->get('IO.format.separator_thousands');
-                $formatter->setSymbol(\NumberFormatter::MONETARY_SEPARATOR_SYMBOL, $decimal_separator);
-                $formatter->setSymbol(\NumberFormatter::MONETARY_GROUPING_SEPARATOR_SYMBOL, $thousands_separator);
-            }
+                    if( $templateConfigService->get('currency.format') === 'symbol' )
+                    {
+                        $formatter->setTextAttribute(\NumberFormatter::CURRENCY_CODE, $currencyISO);
+                    }
+                    else
+                    {
+                        $formatter->setSymbol(\NumberFormatter::CURRENCY_SYMBOL, $currencyISO);
+                    }
+
+                    if($this->config->get('IO.format.use_locale_currency_format') === "0")
+                    {
+                        $decimal_separator   = $this->config->get('IO.format.separator_decimal');
+                        $thousands_separator = $this->config->get('IO.format.separator_thousands');
+                        $formatter->setSymbol(\NumberFormatter::MONETARY_SEPARATOR_SYMBOL, $decimal_separator);
+                        $formatter->setSymbol(\NumberFormatter::MONETARY_GROUPING_SEPARATOR_SYMBOL, $thousands_separator);
+                    }
+
+                    return $formatter;
+                }
+            );
 
             return $formatter->format($value);
 

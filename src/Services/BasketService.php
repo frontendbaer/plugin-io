@@ -2,16 +2,14 @@
 
 namespace IO\Services;
 
-use IO\Services\ItemLoader\Loaders\BasketItems;
+use IO\Services\ItemLoader\Extensions\TwigLoaderPresets;
 use IO\Services\ItemLoader\Services\ItemLoaderService;
+use Plenty\Modules\Accounting\Vat\Models\VatRate;
 use Plenty\Modules\Basket\Contracts\BasketRepositoryContract;
 use Plenty\Modules\Basket\Contracts\BasketItemRepositoryContract;
 use Plenty\Modules\Basket\Models\Basket;
 use Plenty\Modules\Basket\Models\BasketItem;
 use Plenty\Modules\Frontend\Contracts\Checkout;
-use IO\Services\ItemService;
-use IO\Services\NotificationService;
-use IO\Constants\LogLevel;
 use IO\Extensions\Filters\NumberFormatFilter;
 use Plenty\Modules\Frontend\Services\VatService;
 
@@ -38,16 +36,24 @@ class BasketService
     private $vatService;
 
     /**
+     * @var SessionStorageService
+     */
+    private $sessionStorage;
+
+    private $basketItems;
+
+    /**
      * BasketService constructor.
      * @param BasketItemRepositoryContract $basketItemRepository
      * @param Checkout $checkout
      * @param VatService $vatService
      */
-    public function __construct(BasketItemRepositoryContract $basketItemRepository, Checkout $checkout, VatService $vatService)
+    public function __construct(BasketItemRepositoryContract $basketItemRepository, Checkout $checkout, VatService $vatService, SessionStorageService $sessionStorage)
     {
         $this->basketItemRepository = $basketItemRepository;
         $this->checkout             = $checkout;
         $this->vatService           = $vatService;
+        $this->sessionStorage       = $sessionStorage;
     }
 
     public function setTemplate(string $template)
@@ -60,7 +66,22 @@ class BasketService
         $basket = $this->getBasket()->toArray();
 
         $basket["itemQuantity"] = $this->getBasketQuantity();
-        $basket["totalVats"] = $this->getTotalVats();
+
+        if ( $basket["itemQuantity"] > 0 )
+        {
+            $basket["totalVats"] = $this->getTotalVats();
+        }
+        else
+        {
+            $basket["totalVats"] = [];
+        }
+
+
+        if ($this->sessionStorage->getCustomer()->showNetPrice) {
+            $basket["itemSum"]        = $basket["itemSumNet"];
+            $basket["basketAmount"]   = $basket["basketAmountNet"];
+            $basket["shippingAmount"] = $basket["shippingAmountNet"];
+        }
 
         return $basket;
     }
@@ -71,7 +92,9 @@ class BasketService
      */
     public function getBasket(): Basket
     {
-        return pluginApp(BasketRepositoryContract::class)->load();
+        $basket = pluginApp(BasketRepositoryContract::class)->load();
+        $basket->currency = pluginApp(CheckoutService::class)->getCurrency();
+        return $basket;
     }
 
     /**
@@ -103,10 +126,15 @@ class BasketService
     {
         $result = array();
 
-        $basketItems    = $this->basketItemRepository->all();
-        $basketItemData = $this->getBasketItemData($basketItems);
+        $basketItems        = $this->getBasketItemsRaw();
+        $basketItemData     = $this->getBasketItemData($basketItems);
+        $showNetPrice       = $this->sessionStorage->getCustomer()->showNetPrice;
 
         foreach ($basketItems as $basketItem) {
+            if ($showNetPrice) {
+                $basketItem->price = round($basketItem->price * 100 / (100.0 + $basketItem->vat), 2);
+            }
+
             array_push(
                 $result,
                 $this->addVariationData($basketItem, $basketItemData[$basketItem->variationId])
@@ -124,7 +152,7 @@ class BasketService
 
         $result = array();
 
-        $basketItems    = $this->basketItemRepository->all();
+        $basketItems    = $this->getBasketItemsRaw();
         $basketItemData = $this->getBasketItemData($basketItems, $template);
 
         foreach ($basketItems as $basketItem) {
@@ -177,6 +205,7 @@ class BasketService
             list($data['basketItemOrderParams'], $data['totalOrderParamsMarkup']) = $this->parseBasketItemOrderParams($data['basketItemOrderParams']);
         }
 
+        $data['referrerId'] = $this->getBasket()->referrerId;
         $basketItem = $this->findExistingOneByData($data);
 
         try {
@@ -234,7 +263,11 @@ class BasketService
     public function updateBasketItem(int $basketItemId, array $data): array
     {
         $data['id'] = $basketItemId;
-        $this->basketItemRepository->updateBasketItem($basketItemId, $data);
+        try {
+            $this->basketItemRepository->updateBasketItem($basketItemId, $data);
+        } catch (\Exception $e) {
+            return ["code" => $e->getCode()];
+        }
         return $this->getBasketItemsForTemplate();
     }
 
@@ -261,7 +294,8 @@ class BasketService
 
     /**
      * Get the data of the basket items
-     * @param array $basketItems
+     * @param BasketItem[] $basketItems
+     * @param string $template
      * @return array
      */
     private function getBasketItemData($basketItems = array(), string $template = ''): array
@@ -273,36 +307,37 @@ class BasketService
         if (count($basketItems) <= 0) {
             return array();
         }
+        $numberFormatFilter = pluginApp(NumberFormatFilter::class);
+        $currency           = $this->getBasket()->currency;
 
         $basketItemVariationIds    = [];
         $basketVariationQuantities = [];
-        $orderPropertries          = [];
+        $orderProperties           = [];
 
         foreach ($basketItems as $basketItem) {
             array_push($basketItemVariationIds, $basketItem->variationId);
             $basketVariationQuantities[$basketItem->variationId] = $basketItem->quantity;
-            $orderPropertries[$basketItem->variationId]          = $basketItem->basketItemOrderParams;
+            $orderProperties[$basketItem->variationId]           = $basketItem->basketItemOrderParams;
         }
 
+        /** @var TwigLoaderPresets $loaderPresets */
+        $loaderPresets = pluginApp(TwigLoaderPresets::class);
+        $presets = $loaderPresets->getGlobals();
         $items = pluginApp(ItemLoaderService::class)
-            ->loadForTemplate($template, [BasketItems::class], ['variationIds' => $basketItemVariationIds, 'basketVariationQuantities' => $basketVariationQuantities]);
+            ->loadForTemplate(
+                $template,
+                $presets['itemLoaderPresets']['basketItems'],
+                [
+                    'variationIds' => $basketItemVariationIds,
+                    'basketVariationQuantities' => $basketVariationQuantities,
+                    'items' => count($basketItemVariationIds), 'page' => 1
+                ]);
 
         $result = array();
         foreach ($items['documents'] as $item) {
             $variationId                                     = $item['data']['variation']['id'];
             $result[$variationId]                            = $item;
-            $result[$variationId]['data']['orderProperties'] = $orderPropertries[$variationId];
-        }
-
-        foreach ($basketItems as $basketItem) {
-            $result[$basketItem->variationId]['data']['calculatedPrices']['default']->unitPrice    = $basketItem->price;
-            $result[$basketItem->variationId]['data']['calculatedPrices']['default']->price        = $basketItem->price;
-            $result[$basketItem->variationId]['data']['calculatedPrices']['default']->unitPriceNet = $basketItem->price / 100 * $basketItem->vat;
-            $result[$basketItem->variationId]['data']['calculatedPrices']['default']->priceNet     = $basketItem->price / 100 * $basketItem->vat;
-
-            $numberFormatFilter                                                                            = pluginApp(NumberFormatFilter::class);
-            $result[$basketItem->variationId]['data']['calculatedPrices']['formatted']['defaultPrice']     = $numberFormatFilter->formatMonetary($basketItem->price, $result[$basketItem->variationId]['data']['calculatedPrices']['default']->currency);
-            $result[$basketItem->variationId]['data']['calculatedPrices']['formatted']['defaultUnitPrice'] = $numberFormatFilter->formatMonetary($basketItem->price, $result[$basketItem->variationId]['data']['calculatedPrices']['default']->currency);
+            $result[$variationId]['data']['orderProperties'] = $orderProperties[$variationId];
         }
 
         return $result;
@@ -310,7 +345,7 @@ class BasketService
 
     public function resetBasket()
     {
-        $basketItems = $this->basketItemRepository->all();
+        $basketItems = $this->getBasketItemsRaw();
         foreach ($basketItems as $basketItem) {
             $this->basketItemRepository->removeBasketItem($basketItem->id);
         }
@@ -350,5 +385,43 @@ class BasketService
     public function getDeliveryAddressId()
     {
         return $this->checkout->getCustomerShippingAddressId();
+    }
+
+    /**
+     * Get the maximum vat value in basket.
+     *
+     * @return float
+     */
+    public function getMaxVatValue()
+    {
+        $maxVatValue = -1;
+
+        foreach ($this->getBasketItemsRaw() as $item) {
+            $maxVatValue = max($maxVatValue, $item->vat);
+        }
+
+        if ($maxVatValue == -1) {
+            if (count($vatRates = $this->vatService->getVat()->vatRates)
+                && isset($vatRates[0])) {
+                $vatRate = $vatRates[0];
+                if ($vatRate instanceof VatRate) {
+                    $maxVatValue = $vatRate->vatRate;
+                }
+            }
+        }
+
+        return $maxVatValue;
+    }
+
+    /**
+     * @return BasketItem[]
+     */
+    private function getBasketItemsRaw()
+    {
+        if (!is_array($this->basketItems)) {
+            $this->basketItems = $this->basketItemRepository->all();
+        }
+
+        return $this->basketItems;
     }
 }

@@ -4,6 +4,7 @@ namespace IO\Services\ItemLoader\Loaders;
 
 use IO\Services\SessionStorageService;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
+use IO\Services\ItemLoader\Contracts\ItemLoaderPaginationContract;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Processor\DocumentProcessor;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Query\Type\TypeInterface;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Search\Document\DocumentSearch;
@@ -14,8 +15,10 @@ use Plenty\Modules\Item\Search\Filter\ClientFilter;
 use Plenty\Modules\Item\Search\Filter\VariationBaseFilter;
 use Plenty\Plugin\Application;
 
-class BasketItems implements ItemLoaderContract
+class BasketItems implements ItemLoaderContract, ItemLoaderPaginationContract
 {
+    private $options = [];
+    
     /**
      * @return SearchInterface
      */
@@ -64,5 +67,38 @@ class BasketItems implements ItemLoaderContract
             $clientFilter,
             $variationFilter
         ];
+    }
+    
+    /**
+     * @param array $options
+     * @return int
+     */
+    public function getCurrentPage($options = [])
+    {
+        return (INT)$options['page'];
+    }
+    
+    /**
+     * @param array $options
+     * @return int
+     */
+    public function getItemsPerPage($options = [])
+    {
+        return (INT)$options['items'];
+    }
+    
+    public function setOptions($options = [])
+    {
+        $this->options = $options;
+        return $options;
+    }
+
+    /**
+     * @param array $defaultResultFields
+     * @return array
+     */
+    public function getResultFields($defaultResultFields)
+    {
+        return $defaultResultFields;
     }
 }

@@ -2,6 +2,7 @@
 
 namespace IO\Builder\Order;
 
+use IO\Extensions\Filters\ItemNameFilter;
 use IO\Services\SessionStorageService;
 use Plenty\Modules\Basket\Models\Basket;
 use Plenty\Modules\Basket\Models\BasketItem;
@@ -25,14 +26,18 @@ class OrderItemBuilder
      */
 	private $vatService;
 
+	/** @var ItemNameFilter */
+	private $itemNameFilter;
+
 	/**
 	 * OrderItemBuilder constructor.
 	 * @param CheckoutService $checkoutService
 	 */
-	public function __construct(CheckoutService $checkoutService, VatService $vatService)
+	public function __construct(CheckoutService $checkoutService, VatService $vatService, ItemNameFilter $itemNameFilter)
 	{
 		$this->checkoutService = $checkoutService;
 		$this->vatService = $vatService;
+		$this->itemNameFilter = $itemNameFilter;
 	}
 
 	/**
@@ -43,27 +48,17 @@ class OrderItemBuilder
 	 */
 	public function fromBasket(Basket $basket, array $items):array
 	{
-		$currentLanguage = pluginApp(SessionStorageService::class)->getLang();
 		$orderItems      = [];
         $maxVatRate      = 0;
 
-        foreach($basket->basketItems as $basketItem)
+        foreach($items as $item)
 		{
-            if($maxVatRate < $basketItem->vat)
+            if($maxVatRate < $item['vat'])
             {
-                $maxVatRate = $basketItem->vat;
+                $maxVatRate = $item['vat'];
             }
 
-			$basketItemName = '';
-			foreach($items as $item)
-			{
-				if($basketItem->variationId == $item['variationId'])
-				{
-                    $basketItemName = $item['variation']['data']['texts']['name1'];
-				}
-			}
-
-			array_push($orderItems, $this->basketItemToOrderItem($basketItem, (STRING)$basketItemName));
+			array_push($orderItems, $this->basketItemToOrderItem($item));
 		}
 
 
@@ -109,62 +104,57 @@ class OrderItemBuilder
 
 	/**
 	 * Add a basket item to the order
-	 * @param BasketItem $basketItem
-	 * @param string $basketItemName
+	 * @param array $basketItem
 	 * @return array
 	 */
-	private function basketItemToOrderItem(BasketItem $basketItem, string $basketItemName):array
+	private function basketItemToOrderItem(array $basketItem):array
 	{
         $basketItemProperties = [];
-        if(count($basketItem->basketItemOrderParams))
+        if(count($basketItem['basketItemOrderParams']))
         {
-            foreach($basketItem->basketItemOrderParams as $property)
+            foreach($basketItem['basketItemOrderParams'] as $property)
             {
                 $basketItemProperty = [
-                    'propertyId' => $property->param_id,
-                    'value'      => $property->value
+                    'propertyId' => $property['propertyId'],
+                    'value'      => $property['value']
                 ];
                 
                 $basketItemProperties[] = $basketItemProperty;
             }
         }
         
-		$priceOriginal = $basketItem->price;
+		$priceOriginal = $basketItem['variation']['data']['prices']['default']['data']['basePrice'];
 
         $attributeTotalMarkup = 0;
-		if(isset($basketItem->attributeTotalMarkup))
+		if(isset($basketItem['attributeTotalMarkup']))
 		{
-            $attributeTotalMarkup = $basketItem->attributeTotalMarkup;
-			if($attributeTotalMarkup != 0)
-			{
-				$priceOriginal -= $attributeTotalMarkup;
-			}
+            $attributeTotalMarkup = $basketItem['attributeTotalMarkup'];
         }
         
         $rebate = 0;
-        if(isset($basketItem->rebate))
+        if(isset($basketItem['rebate']))
 		{
-			$rebate = $basketItem->rebate;
+			$rebate = $basketItem['rebate'];
 		}
-	    
+
 		return [
 			"typeId"            => OrderItemType::VARIATION,
-			"referrerId"        => $basketItem->referrerId,
-			"itemVariationId"   => $basketItem->variationId,
-			"quantity"          => $basketItem->quantity,
-			"orderItemName"     => $basketItemName,
-			"shippingProfileId" => $basketItem->shippingProfileId,
+			"referrerId"        => $basketItem['referrerId'],
+			"itemVariationId"   => $basketItem['variationId'],
+			"quantity"          => $basketItem['quantity'],
+			"orderItemName"     => $this->itemNameFilter->itemName( $basketItem['variation']['data'] ),
+			"shippingProfileId" => $basketItem['shippingProfileId'],
 			"countryVatId"      => $this->vatService->getCountryVatId(),
-			"vatRate"           => $basketItem->vat,
+			"vatRate"           => $basketItem['vat'],
 			//"vatField"			=> $basketItem->vatField,// TODO
             "orderProperties"   => $basketItemProperties,
 			"amounts"           => [
 				[
-					"currency"           => $this->checkoutService->getCurrency(),
-					"priceOriginalGross" => $priceOriginal,
-                    "surcharge" => $attributeTotalMarkup,
-					"rebate"	=> $rebate,
-					"isPercentage" => 1
+					"currency"              => $this->checkoutService->getCurrency(),
+					"priceOriginalGross"    => $priceOriginal,
+                    "surcharge"             => $attributeTotalMarkup,
+					"rebate"	            => $rebate,
+					"isPercentage"          => 1
 				]
 			]
 		];

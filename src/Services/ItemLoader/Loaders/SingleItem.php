@@ -1,18 +1,24 @@
 <?php
 namespace IO\Services\ItemLoader\Loaders;
 
+use IO\Services\ItemLoader\Helper\WebshopFilterBuilder;
 use IO\Services\SessionStorageService;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\TemplateConfigService;
+use IO\Services\PriceDetectService;
+use Plenty\Modules\Cloud\ElasticSearch\Lib\Collapse\BaseCollapse;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Processor\DocumentProcessor;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Query\Type\TypeInterface;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Search\Document\DocumentSearch;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Search\SearchInterface;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Source\Mutator\BuiltIn\LanguageMutator;
+use Plenty\Modules\Item\Search\Aggregations\ItemCardinalityAggregation;
+use Plenty\Modules\Item\Search\Aggregations\ItemCardinalityAggregationProcessor;
 use Plenty\Modules\Item\Search\Mutators\ImageMutator;
 use Plenty\Modules\Item\Search\Filter\ClientFilter;
 use Plenty\Modules\Item\Search\Filter\VariationBaseFilter;
 use Plenty\Modules\Item\Search\Filter\TextFilter;
+use Plenty\Modules\Item\Search\Filter\SalesPriceFilter;
 use Plenty\Plugin\Application;
 
 /**
@@ -22,12 +28,19 @@ use Plenty\Plugin\Application;
  */
 class SingleItem implements ItemLoaderContract
 {
+    private $options = [];
+    
 	/**
 	 * @return SearchInterface
 	 */
 	public function getSearch()
 	{
-        $languageMutator = pluginApp(LanguageMutator::class, ["languages" => [pluginApp(SessionStorageService::class)->getLang()]]);
+        $sessionLang =  $this->options['lang'];
+        if ( $sessionLang === null )
+        {
+            $sessionLang = pluginApp(SessionStorageService::class)->getLang();
+        }
+        $languageMutator = pluginApp(LanguageMutator::class, ["languages" => [$sessionLang]]);
         $imageMutator = pluginApp(ImageMutator::class);
         $imageMutator->addClient(pluginApp(Application::class)->getPlentyId());
         
@@ -35,7 +48,19 @@ class SingleItem implements ItemLoaderContract
         $documentProcessor->addMutator($languageMutator);
         $documentProcessor->addMutator($imageMutator);
         
-        return pluginApp(DocumentSearch::class, [$documentProcessor]);
+        $documentSearch = pluginApp(DocumentSearch::class, [$documentProcessor]);
+        
+        /** @var WebshopFilterBuilder $webshopFilterBuilder */
+        $webshopFilterBuilder = pluginApp(WebshopFilterBuilder::class);
+        $collapse = $webshopFilterBuilder->getCollapseForCombinedVariations($this->options);
+        if($collapse instanceof BaseCollapse)
+        {
+            $documentSearch->setCollapse($collapse);
+            $counterAggreation = pluginApp(ItemCardinalityAggregation::class, [pluginApp(ItemCardinalityAggregationProcessor::class)]);
+            $documentSearch->addAggregation($counterAggreation);
+        }
+        
+        return $documentSearch;
 	}
     
     /**
@@ -53,6 +78,11 @@ class SingleItem implements ItemLoaderContract
 	 */
 	public function getFilterStack($options = [])
 	{
+        /**
+         * @var TemplateConfigService $templateConfigService
+         */
+        $templateConfigService = pluginApp(TemplateConfigService::class);
+	    
 		/** @var ClientFilter $clientFilter */
 		$clientFilter = pluginApp(ClientFilter::class);
 		$clientFilter->isVisibleForClient(pluginApp(Application::class)->getPlentyId());
@@ -70,8 +100,24 @@ class SingleItem implements ItemLoaderContract
         {
             $variationFilter->hasId($options['variationId']);
         }
+        else
+        {
+            $variationShowType = $templateConfigService->get('item.variation_show_type');
+            if($variationShowType == 'main')
+            {
+                $variationFilter->isMain();
+            }
+            elseif($variationShowType == 'child')
+            {
+                $variationFilter->isChild();
+            }
+        }
         
-        $sessionLang = pluginApp(SessionStorageService::class)->getLang();
+        $sessionLang =  $options['lang'];
+		if ( $sessionLang === null )
+		{
+		    $sessionLang = pluginApp(SessionStorageService::class)->getLang();
+        }
         
         $langMap = [
             'de' => TextFilter::LANG_DE,
@@ -88,10 +134,6 @@ class SingleItem implements ItemLoaderContract
         {
             $textFilterLanguage = $langMap[$sessionLang];
             
-            /**
-             * @var TemplateConfigService $templateConfigService
-             */
-            $templateConfigService = pluginApp(TemplateConfigService::class);
             $usedItemName = $templateConfigService->get('item.name');
             
             $textFilterType = TextFilter::FILTER_ANY_NAME;
@@ -113,11 +155,40 @@ class SingleItem implements ItemLoaderContract
             
             $textFilter->hasNameInLanguage($textFilterLanguage, $textFilterType);
         }
+        
+        /**
+         * @var PriceDetectService $priceDetectService
+         */
+        $priceDetectService = pluginApp(PriceDetectService::class);
+        $priceIds = $priceDetectService->getPriceIdsForCustomer();
+        
+        /**
+         * @var SalesPriceFilter $priceFilter
+         */
+        $priceFilter = pluginApp(SalesPriceFilter::class);
+        $priceFilter->hasAtLeastOnePrice($priceIds);
 
 		return [
 			$clientFilter,
 		    $variationFilter,
-            $textFilter
+            $textFilter,
+            $priceFilter
 		];
 	}
+    
+    public function setOptions($options = [])
+    {
+        $options['useVariationShowType'] = true;
+        $this->options = $options;
+        return $options;
+    }
+
+    /**
+     * @param array $defaultResultFields
+     * @return array
+     */
+    public function getResultFields($defaultResultFields)
+    {
+        return $defaultResultFields;
+    }
 }

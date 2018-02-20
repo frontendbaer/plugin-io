@@ -6,6 +6,7 @@ use IO\Services\SessionStorageService;
 use IO\Services\ItemCrossSellingService;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\TemplateConfigService;
+use IO\Services\PriceDetectService;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Processor\DocumentProcessor;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Query\Type\TypeInterface;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Search\Document\DocumentSearch;
@@ -16,6 +17,7 @@ use Plenty\Modules\Item\Search\Filter\CrossSellingFilter;
 use Plenty\Modules\Item\Search\Filter\VariationBaseFilter;
 use Plenty\Modules\Item\Search\Filter\TextFilter;
 use Plenty\Plugin\Application;
+use Plenty\Modules\Item\Search\Filter\SalesPriceFilter;
 
 /**
  * Class CrossSellingItems
@@ -23,6 +25,8 @@ use Plenty\Plugin\Application;
  */
 class CrossSellingItems implements ItemLoaderContract
 {
+    private $options = [];
+    
     /**
      * @return SearchInterface
      */
@@ -68,8 +72,11 @@ class CrossSellingItems implements ItemLoaderContract
         /**
          * @var CrossSellingFilter $crossSellingFilter
          */
-        $crossSellingFilter = pluginApp(CrossSellingFilter::class, [$options['crossSellingItemId']]);
-        $crossSellingFilter->hasRelation($crossSellingService->getType());
+        if(isset($options['crossSellingItemId']) && (int)$options['crossSellingItemId'] > 0)
+        {
+            $crossSellingFilter = pluginApp(CrossSellingFilter::class, [$options['crossSellingItemId']]);
+            $crossSellingFilter->hasRelation($crossSellingService->getType());
+        }
         
         $sessionLang = pluginApp(SessionStorageService::class)->getLang();
         
@@ -113,13 +120,32 @@ class CrossSellingItems implements ItemLoaderContract
             
             $textFilter->hasNameInLanguage($textFilterLanguage, $textFilterType);
         }
+    
+        /**
+         * @var PriceDetectService $priceDetectService
+         */
+        $priceDetectService = pluginApp(PriceDetectService::class);
+        $priceIds = $priceDetectService->getPriceIdsForCustomer();
+    
+        /**
+         * @var SalesPriceFilter $priceFilter
+         */
+        $priceFilter = pluginApp(SalesPriceFilter::class);
+        $priceFilter->hasAtLeastOnePrice($priceIds);
         
-        return [
+        $filters = [
             $clientFilter,
             $variationFilter,
-            $crossSellingFilter,
-            $textFilter
+            $textFilter,
+            $priceFilter
         ];
+        
+        if($crossSellingFilter instanceof CrossSellingFilter)
+        {
+            $filters[] = $crossSellingFilter;
+        }
+        
+        return $filters;
     }
     
     /**
@@ -138,5 +164,20 @@ class CrossSellingItems implements ItemLoaderContract
     public function getItemsPerPage($options = [])
     {
         return ( (INT)$options['items'] > 0 ? (INT)$options['items'] : 20 );
+    }
+    
+    public function setOptions($options = [])
+    {
+        $this->options = $options;
+        return $options;
+    }
+
+    /**
+     * @param array $defaultResultFields
+     * @return array
+     */
+    public function getResultFields($defaultResultFields)
+    {
+        return $defaultResultFields;
     }
 }

@@ -1,5 +1,174 @@
 # Release Notes for IO
 
+## v2.3.0 (2018-02-19) <a href="https://github.com/plentymarkets/plugin-io/compare/2.2.2...2.3.0" target="_blank"><b>Overview of all changes</b></a>
+
+### changed
+
+- The filter `itemName` is now able to display the variation name or a combination of item name and variation name in accordance with the Ceres configuration.
+
+### Fixed
+
+- Due to an error item URLs weren't generated correctly. This has been fixed.
+
+## v2.2.2 (2018-02-12) <a href="https://github.com/plentymarkets/plugin-io/compare/2.2.1...2.2.2" target="_blank"><b>Overview of all changes</b></a>
+
+### Fixed
+
+- Due to an error, the item view occasionally displayed a 404 page if the URL was entered without Variation ID. This has been fixed by taking the configuration value **Show variations by type** into account in the item view as well.
+
+## v2.2.1 (2018-02-07) <a href="https://github.com/plentymarkets/plugin-io/compare/2.2.0...2.2.1" target="_blank"><b>Overview of all changes</b></a>
+
+### Changed
+
+- The sorting order of search results has been improved.
+- The list of active languages will no longer be loaded from the `WebstoreConfigurationRepositoryContract`. This list will now be loaded from the configuration of the respective template plugin instead.
+
+### Fixed
+
+- Due to an error the prices of cross selling items weren't calculated correctly. This has been fixed.
+
+## v2.2.0 (2018-02-05) <a href="https://github.com/plentymarkets/plugin-io/compare/2.1.5...2.2.0" target="_blank"><b>Overview of all changes</b></a>
+
+### Added
+
+- `IO.Resources.Import` can now receive parameters. For example, when generating and integrating a script own values saved in the plugin configuration can now be transferred and taken into account when rendering the script.
+- The content of **.properties** files can now be loaded.
+
+### Fixed
+
+- Due to an error the error page was transmitted with a 200 status code. This has been fixed.
+- Due to an error the relevance of an item wasn't correctly taken into account when searching for items and sorting items by relevance. This has been fixed.
+
+## v2.1.5 (2018-02-02) <a href="https://github.com/plentymarkets/plugin-io/compare/2.1.4...2.1.5" target="_blank"><b>Overview of all changes</b></a>
+
+### Fixed
+
+- Due to an error the pagination wasn't displayed correctly when using the setting Show varations by type: Dynamically. This has been fixed.
+- Due to an error item data was not displayed in a consistent way. This has been fixed.
+- Due to an error surcharges for order properties weren't calculated correctly. This has been fixed.
+
+## v2.1.4 (2018-01-29) <a href="https://github.com/plentymarkets/plugin-io/compare/2.1.3...2.1.4" target="_blank"><b>Overview of all changes</b></a>
+
+- Due to an error URLs without the **Variation ID** parameter weren't displayed correctly. This has been fixed.
+
+## v2.1.3 (2018-01-23) <a href="https://github.com/plentymarkets/plugin-io/compare/2.1.2...2.1.3" target="_blank"><b>Overview of all changes</b></a>
+
+### Fixed
+
+- Due to an error the 404 page wasn't displayed correctly. This has been fixed.
+- Due to an error unneccessary item requests were executed. This has been fixed.
+
+## v2.1.2 (2018-01-22) <a href="https://github.com/plentymarkets/plugin-io/compare/2.1.1...2.1.2" target="_blank"><b>Overview of all changes</b></a>
+
+### Added
+
+- A security prompt has been added which prevents customers from returning items multiple times.
+
+### Fixed
+
+- Due to an error too many items have been displayed in the wish list. This has been fixed.
+
+## v2.1.1 (2018-01-09) <a href="https://github.com/plentymarkets/plugin-io/compare/2.1.0...2.1.1" target="_blank"><b>Overview of all changes</b></a>
+
+### Fixed
+
+- When ordering as a guest, the address will now be removed from the session after placing the order.
+- Due to an error, wrong item URLs have been generated when only one language has been activated for the online store. This has been fixed.
+
+## v2.1.0 (2018-01-04) <a href="https://github.com/plentymarkets/plugin-io/compare/2.0.3...2.1.0" target="_blank"><b>Overview of all changes</b></a>
+
+### Added
+
+- URLs for items and categories can now be generated in the respective language.
+
+### Fixed
+
+- Due to an error, readable URLs for new items could not be generated. This has been fixed.
+
+## v2.0.3 (2017-12-21) <a href="https://github.com/plentymarkets/plugin-io/compare/2.0.2...2.0.3" target="_blank"><b>Overview of all changes</b></a>
+
+### Added
+
+- Translatable error message for registration in case the email address already exists.
+
+### Fixed
+
+- Delivery address can now be set back to "Delivery address equals invoice address".
+- Fixed error for item visibility in spite of link to customer class.
+
+## v2.0.2 (2017-12-13) <a href="https://github.com/plentymarkets/plugin-io/compare/2.0.1...2.0.2" target="_blank"><b>Overview of all changes</b></a>
+
+### Added
+
+- The additional flag `isSelectable` is sent when loading payment methods.
+
+### Fixed
+
+- Order referrers will now be taken into consideration when loading items or calculating prices.
+- Various errors concerning the handling of coupon codes have been fixed.
+
+## v2.0.1 (2017-12-06) <a href="https://github.com/plentymarkets/plugin-io/compare/2.0.0...2.0.1" target="_blank"><b>Overview of all changes</b></a>
+
+### Fixed
+
+- Due to an error the default homepage wasn't displayed correctly. This has been fixed.
+
+## v2.0.0 (2017-11-30) <a href="https://github.com/plentymarkets/plugin-io/compare/1.7.2...2.0.0" target="_blank"><b>Overview of all changes</b></a>
+
+### Added
+
+- The Twig functions `get_additional_styles()` und `get_additional_scripts()` allow external plugins get styles and scripts and output them at the respective location.
+- A new REST route `io/checkout/paymentId` for setting the payment method has been added.
+- A new REST route `io/checkout/shippingId` for seeting the shipping method has been added.
+- An **Account** will be created in plentymarkets when a B2B customer signs up in the online store.
+- A middleware has been added for reacting to changes of the currency in the online store.
+- Prices will now be converted when the currency is changed.
+- The logic for calculating order sums has been added (previously this logic was contained in a Twig macro in Ceres).
+- A customer that ordered as a guest may now change the payment method on the order confirmation page if enabled.
+- A customer that ordered as a guest can now pay an order subsequently, e.g. when the payment method changes.
+- An error message has been added that will be displayed when an error occurs during adding items to the shopping cart.
+
+### Fixed
+
+- Due to an error the **My Account** area could not be loaded when loading the orders of a customer.
+- Due to an error the route `/wishlist` for the wish list hasn't been active even though it has been activated in the configuration. This has been fixed.
+- Due to an error prices with different VAT rated haven't been displayed correctly. This has been fixed.
+- Multiple events are now triggered after loggint out of the online store for, e.g. updating the shopping cart.
+- An order for which returns are not allowed cannot be accessed directly using the `/returns` route anymore.
+
+## v1.7.2 (2017-11-22) <a href="https://github.com/plentymarkets/plugin-io/compare/1.7.1...1.7.2" target="_blank"><b>Overview of all changes</b></a>
+
+### Fixed
+
+- Due to an error, shipping costs weren't displayed correctly on the order detail page and on the order confirmation page. This has been fixed.
+- Due to an error, additional item data wasn't displayed in the shopping cart when having more than 10 items in the shopping cart. This has been fixed.
+
+## v1.7.1 (2017-11-17) <a href="https://github.com/plentymarkets/plugin-io/compare/1.7.0...1.7.1" target="_blank"><b>Overview of all changes</b></a>
+
+### Fixed
+
+- The position of a sales price is now taken into account in the front end to ensure the correct display of prices in the online store.
+- The minimum order quantity saved for a customer class is now also taken into account.
+- Variations that are not linked to the current customer class of the customer, will not be displayed in the variation selection of the single item view.
+
+## v1.7.0 (2017-11-08) <a href="https://github.com/plentymarkets/plugin-io/compare/1.6.2...1.7.0" target="_blank"><b>Overview of all changes</b></a>
+
+### Added
+
+- Customer classes are now taken into consideration when displaying item data in the online store.
+- Plugins can now add new values to extend the item sorting in the online store. For further information about this, refer to <a href="https://developers.plentymarkets.com/dev-doc/cookbook#item-sorting" target="_blank">plentyDevelopers</a>.
+
+### Fixed
+
+- The variation setting for unite prices **Show unit price** is now taken into account. When deactivating this setting, the unit price is not displayed in the online store.
+
+## v1.6.2 (2017-10-25) <a href="https://github.com/plentymarkets/plugin-io/compare/1.6.1...1.6.2" target="_blank"><b>Overview of all changes</b></a>
+
+### Added
+
+- Addresses can be saved as a "DHL Packstation" or post office.
+- In the Customer Service, the function `hasReturns` was added to show if the customer has any returns.
+
 ## v1.6.1 (2017-10-19) <a href="https://github.com/plentymarkets/plugin-io/compare/1.6.0...1.6.1" target="_blank"><b>Overview of all changes</b></a>
 
 
@@ -106,7 +275,7 @@
 ### Added
 
 - The logic and the route `/wish-list` has been added to display a wish list in the online store. **Note:** In order for the migration of the data base table to run correctly, the standard client must be activated and the plugin deployed. After deployment the standard client can be deactivated.
-- The logic and the route `/contact` has been added to display a contact page in the online store. 
+- The logic and the route `/contact` has been added to display a contact page in the online store.
 - The `ContactMailService` has been added to process the sending of customer requests via the contact page of the online store.
 - A method has been added in the `BasketService` to get the quantity of items in the shopping cart.
 - The `NotificationService` has been extended to correctly display error messages in the front-end.
@@ -283,13 +452,13 @@
 
 - Filter functionality via facets
 - Rendered Twig templates can now be retrieved via REST
-- New Twig functions: `trimNewLines` and `formatDateTime` 
+- New Twig functions: `trimNewLines` and `formatDateTime`
 - New method in the **CategoryService**: `getChildren()`
 to get all subcategories
 
 ### Changed
 
-- Routing was updated and extended: Old store URLs can now be processed and displayed in **Ceres**. The URL structure was optimised from `/{itemName}/{itemId}/{variationId}` to `/{category}/{subcategory}/.../{itemName}-{itemId}-{variationId}` 
+- Routing was updated and extended: Old store URLs can now be processed and displayed in **Ceres**. The URL structure was optimised from `/{itemName}/{itemId}/{variationId}` to `/{category}/{subcategory}/.../{itemName}-{itemId}-{variationId}`
 
 ## v1.0.2 (2017-03-06)
 

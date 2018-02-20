@@ -60,7 +60,9 @@ class OrderTemplateResource extends ApiResource
             $order = $this->orderRepository->findOrderById($orderId);
             if($order instanceof Order)
             {
-                $renderedTemplate = $this->templateService->renderTemplate($template, ['orderData' => LocalizedOrder::wrap($order, 'de')]);
+                $renderedTemplate = $this->templateService->renderTemplate($template, [
+                    'orderData' => LocalizedOrder::wrap($order, 'de'),
+                ]);
             }
         }
         

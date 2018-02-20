@@ -2,24 +2,24 @@
 namespace IO\Services\ItemLoader\Factories;
 
 use IO\Extensions\Filters\NumberFormatFilter;
+use IO\Helper\DefaultSearchResult;
+use IO\Services\CheckoutService;
+use IO\Helper\VariationPriceList;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\ItemLoader\Contracts\ItemLoaderFactory;
 use IO\Services\ItemLoader\Contracts\ItemLoaderPaginationContract;
 use IO\Services\ItemLoader\Contracts\ItemLoaderSortingContract;
+use IO\Services\ItemLoader\Services\FacetExtensionContainer;
 use IO\Services\ItemWishListService;
-use IO\Services\SalesPriceService;
-use IO\Services\SessionStorageService;
-use Plenty\Legacy\Services\Item\Variation\SalesPriceService as BasePriceService;
-use Plenty\Modules\Item\Unit\Contracts\UnitRepositoryContract;
-use Plenty\Modules\Item\Unit\Contracts\UnitNameRepositoryContract;
+use IO\Services\CustomerService;
+use IO\Services\UrlBuilder\VariationUrlBuilder;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Search\Document\DocumentSearch;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Sorting\SortingInterface;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Source\IncludeSource;
 use Plenty\Modules\Item\Search\Contracts\VariationElasticSearchSearchRepositoryContract;
 use Plenty\Modules\Item\Search\Contracts\VariationElasticSearchMultiSearchRepositoryContract;
-use Plenty\Modules\Item\SalesPrice\Models\SalesPriceSearchResponse;
+use Plenty\Modules\Item\Search\Filter\SearchFilter;
 use Plenty\Plugin\ConfigRepository;
-use Plenty\Modules\Authorization\Services\AuthHelper;
 
 /**
  * Created by ptopczewski, 09.01.17 08:35
@@ -29,6 +29,20 @@ use Plenty\Modules\Authorization\Services\AuthHelper;
 class ItemLoaderFactoryES implements ItemLoaderFactory
 {
     /**
+     * @var FacetExtensionContainer
+     */
+    private $facetExtensionContainer;
+
+    /**
+     * ItemLoaderFactoryES constructor.
+     * @param FacetExtensionContainer $facetExtensionContainer
+     */
+    public function __construct(FacetExtensionContainer $facetExtensionContainer)
+    {
+        $this->facetExtensionContainer = $facetExtensionContainer;
+    }
+
+    /**
      * @param array $loaderClassList
      * @param array $resultFields
      * @param array $options
@@ -37,7 +51,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
     public function runSearch($loaderClassList, $resultFields,  $options = [])
     {
         $result = [];
-        
+
         $isMultiSearch = false;
         if(isset($loaderClassList['multi']) && count($loaderClassList['multi']))
         {
@@ -48,7 +62,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
             $classList['single'] = $loaderClassList;
             $loaderClassList = $classList;
         }
-        
+
         if($isMultiSearch)
         {
             $result = $this->buildMultiSearch($loaderClassList, $resultFields, $options);
@@ -57,39 +71,49 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
         {
             $result = $this->buildSingleSearch($loaderClassList['single'], $resultFields, $options);
         }
-        
+
+        $result = $this->normalizeResult($result);
         $result = $this->attachPrices($result, $options);
         $result = $this->attachItemWishList($result);
+        $result = $this->attachURLs($result);
 
         return $result;
     }
-    
+
     private function buildSingleSearch($loaderClassList, $resultFields, $options = [])
     {
         /** @var VariationElasticSearchSearchRepositoryContract $elasticSearchRepo */
         $elasticSearchRepo = pluginApp(VariationElasticSearchSearchRepositoryContract::class);
-        
+
         $search = null;
-        
+
         foreach($loaderClassList as $loaderClass)
         {
             /** @var ItemLoaderContract $loader */
             $loader = pluginApp($loaderClass);
-            
+
             if($loader instanceof ItemLoaderContract)
             {
+                $options = $loader->setOptions($options);
                 if(!$search instanceof DocumentSearch)
                 {
                     //search, filter
                     $search = $loader->getSearch();
                 }
-                
+
                 foreach($loader->getFilterStack($options) as $filter)
                 {
-                    $search->addFilter($filter);
+                    if($filter instanceof SearchFilter)
+                    {
+                        $search->addQuery($filter);
+                    }
+                    else
+                    {
+                        $search->addFilter($filter);
+                    }
                 }
             }
-            
+
             //sorting
             if($loader instanceof ItemLoaderSortingContract)
             {
@@ -100,7 +124,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                     $search->setSorting($sorting);
                 }
             }
-            
+
             if($loader instanceof ItemLoaderPaginationContract)
             {
                 if($search instanceof DocumentSearch)
@@ -109,30 +133,34 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                     $search->setPage($loader->getCurrentPage($options), $loader->getItemsPerPage($options));
                 }
             }
-            
+
             /** @var IncludeSource $source */
             $source = pluginApp(IncludeSource::class);
-            
+
             $currentFields = $resultFields;
             if(array_key_exists($loaderClass, $currentFields))
             {
                 $currentFields = $currentFields[$loaderClass];
             }
-            
+            else
+            {
+                $currentFields = $loader->getResultFields( $resultFields );
+            }
+
             $fieldsFound = false;
             foreach($currentFields as $fieldName)
             {
                 $source->activateList([$fieldName]);
                 $fieldsFound = true;
             }
-            
+
             if(!$fieldsFound)
             {
                 $source->activateAll();
             }
-            
+
             $search->addSource($source);
-            
+
             $aggregations = $loader->getAggregations();
             if(count($aggregations))
             {
@@ -142,60 +170,72 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                 }
             }
         }
-        
+
         if(!is_null($search))
         {
             $elasticSearchRepo->addSearch($search);
         }
         
         $result = $elasticSearchRepo->execute();
+        foreach ($this->facetExtensionContainer->getFacetExtensions() as $facetExtension) {
+            $result = $facetExtension->mergeIntoFacetsList($result);
+        }
 
         return $result;
     }
-    
+
     private function buildMultiSearch($loaderClassList, $resultFields, $options = [])
     {
         /**
          * @var VariationElasticSearchMultiSearchRepositoryContract $elasticSearchRepo
          */
         $elasticSearchRepo = pluginApp(VariationElasticSearchMultiSearchRepositoryContract::class);
-        
+
         $search = null;
-        
+
         $identifiers = [];
         
+        $options['loaderClassList'] = $loaderClassList;
+
         foreach($loaderClassList as $type => $loaderClasses)
         {
             foreach($loaderClasses as $identifier => $loaderClass)
             {
                 /** @var ItemLoaderContract $loader */
                 $loader = pluginApp($loaderClass);
-                
+
                 if($loader instanceof ItemLoaderContract)
                 {
+                    $options = $loader->setOptions($options);
                     if(!$search instanceof DocumentSearch)
                     {
-                        //search, filter
                         $search = $loader->getSearch();
                     }
-                    
+
                     foreach($loader->getFilterStack($options) as $filter)
                     {
-                        $search->addFilter($filter);
+                        if($filter instanceof SearchFilter)
+                        {
+                            $search->addQuery($filter);
+                        }
+                        else
+                        {
+                            $search->addFilter($filter);
+                        }
                     }
                 }
-                
+
                 //sorting
                 if($loader instanceof ItemLoaderSortingContract)
                 {
                     /** @var ItemLoaderSortingContract $loader */
                     $sorting = $loader->getSorting($options);
-                    if($sorting instanceof SortingInterface)
+                    if($sorting instanceof SortingInterface && $sorting !== null )
                     {
                         $search->setSorting($sorting);
                     }
                 }
-                
+
                 if($loader instanceof ItemLoaderPaginationContract)
                 {
                     if($search instanceof DocumentSearch)
@@ -204,30 +244,34 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                         $search->setPage($loader->getCurrentPage($options), $loader->getItemsPerPage($options));
                     }
                 }
-                
+
                 /** @var IncludeSource $source */
                 $source = pluginApp(IncludeSource::class);
-                
+
                 $currentFields = $resultFields;
                 if(array_key_exists($loaderClass, $currentFields))
                 {
                     $currentFields = $currentFields[$loaderClass];
                 }
-                
+                else
+                {
+                    $currentFields = $loader->getResultFields( $resultFields );
+                }
+
                 $fieldsFound = false;
                 foreach($currentFields as $fieldName)
                 {
                     $source->activateList([$fieldName]);
                     $fieldsFound = true;
                 }
-                
+
                 if(!$fieldsFound)
                 {
                     $source->activateAll();
                 }
-                
+
                 $search->addSource($source);
-                
+
                 $aggregations = $loader->getAggregations();
                 if(count($aggregations))
                 {
@@ -236,7 +280,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                         $search->addAggregation($aggregation);
                     }
                 }
-                
+
                 if($type == 'multi')
                 {
                     $e = explode('\\', $loaderClass);
@@ -246,17 +290,17 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                         $identifiers[] = $identifier;
                     }
                 }
-            }
-            
-            if(!is_null($search))
-            {
-                $elasticSearchRepo->addSearch($search);
-                $search = null;
+    
+                if(!is_null($search))
+                {
+                    $elasticSearchRepo->addSearch($search);
+                    $search = null;
+                }
             }
         }
         
         $rawResult = $elasticSearchRepo->execute();
-        
+
         $result = [];
         foreach($rawResult as $key => $list)
         {
@@ -269,151 +313,99 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
             }
             else
             {
-                $result[$identifiers[$key-1]] = $this->attachPrices($list);
-                $list = $result[$identifiers[$key-1]];
-                $result[$identifiers[$key-1]] = $this->attachItemWishList($list);
+                $identifier = $identifiers[$key-1];
+                $result[$identifier] = $this->attachPrices($list);
+                if ( $identifier !== "Facets" )
+                {
+                    $result[$identifier] = $this->normalizeResult( $result[$identifier] );
+                }
+                $result[$identifier] = $this->attachItemWishList( $result[$identifier] );
 
             }
         }
-        
+    
+        foreach ($this->facetExtensionContainer->getFacetExtensions() as $facetExtension) {
+            $result = $facetExtension->mergeIntoFacetsList($result);
+        }
+
         return $result;
     }
-    
+
     private function attachPrices($result, $options = [])
     {
-        if(count($result['documents']))
-        {
-            /**
-             * @var SalesPriceService $salesPriceService
-             */
-            $salesPriceService = pluginApp(SalesPriceService::class);
-            
-            foreach($result['documents'] as $key => $variation)
+        if(count($result['documents'])) {
+            /** @var CustomerService $customerService */
+            $customerService = pluginApp(CustomerService::class);
+            $customerClassMinimumOrderQuantity = $customerService->getContactClassMinimumOrderQuantity();
+
+            foreach ( $result['documents'] as $key => $variation )
             {
-                if((int)$variation['data']['variation']['id'] > 0)
+                if ( (int)$variation['data']['variation']['id'] > 0 )
                 {
-                    $quantity = 1;
-                    if(isset($options['basketVariationQuantities'][$variation['data']['variation']['id']]) && (int)$options['basketVariationQuantities'][$variation['data']['variation']['id']] > 0)
+                    $variationId        = $variation['data']['variation']['id'];
+                    $minimumQuantity    = $variation['data']['variation']['minimumOrderQuantity'];
+                    if ( $minimumQuantity === null )
                     {
-                        $quantity = (int)$options['basketVariationQuantities'][$variation['data']['variation']['id']];
-                    }
-                    
-                    $numberFormatFilter = pluginApp(NumberFormatFilter::class);
-                    
-                    $salesPrice = $salesPriceService->getSalesPriceForVariation($variation['data']['variation']['id'], 'default', $quantity);
-                    
-                    $graduated = [];
-                    
-                    if(count($variation['data']['salesPrices']) > 1)
-                    {
-                        $graduated = $salesPriceService->getAllSalesPricesForVariation($variation['data']['variation']['id'], 'default');
-                    }
-                    
-                    $graduatedPrices = [];
-                    
-                    if(is_array($graduated) && count($graduated))
-                    {
-                        foreach($graduated as $gpKey => $gp)
+                        // mimimum order quantity is not defined => get smallest possible quantity depending on interval order quantity
+                        if ( $variation['data']['variation']['intervalOrderQuantity'] !== null )
                         {
-                            if($gp instanceof SalesPriceSearchResponse)
-                            {
-                                if($gp->salesPriceId == $salesPrice->salesPriceId)
-                                {
-                                    unset($graduated[$gpKey]);
-                                }
-                            }
+                            $minimumQuantity = $variation['data']['variation']['intervalOrderQuantity'];
                         }
-                        
-                        $graduatedPrices = $graduated;
-                    }
-    
-                    if($salesPrice instanceof SalesPriceSearchResponse)
-                    {
-                        $variation['data']['calculatedPrices']['default'] = $salesPrice;
-                        $variation['data']['calculatedPrices']['formatted']['defaultPrice'] = $numberFormatFilter->formatMonetary($salesPrice->price, $salesPrice->currency);
-                        $variation['data']['calculatedPrices']['formatted']['defaultUnitPrice'] = $numberFormatFilter->formatMonetary($salesPrice->unitPrice, $salesPrice->currency);
-    
-                        $variation['data']['calculatedPrices']['graduatedPrices'] = [];
-                        if(count($graduatedPrices))
+                        else
                         {
-                            foreach($graduatedPrices as $graduatedPrice)
-                            {
-                                if($graduatedPrice instanceof SalesPriceSearchResponse)
-                                {
-                                    $variation['data']['calculatedPrices']['graduatedPrices'][] = [
-                                        'minimumOrderQuantity' => (int)$graduatedPrice->minimumOrderQuantity,
-                                        'price'                => (float)$graduatedPrice->price,
-                                        'formatted'            => $numberFormatFilter->formatMonetary($graduatedPrice->price, $graduatedPrice->currency)
-                                    ];
-                                }
-                            }
+                            // no interval quantity defined => minimum order quantity should be 1
+                            $minimumQuantity = 1;
                         }
-                        
-                        /**
-                         * @var BasePriceService $basePriceService
-                         */
-                        $basePriceService = pluginApp(BasePriceService::class);
-                        
+                    }
+
+                    if ( (float)$customerClassMinimumOrderQuantity > $minimumQuantity )
+                    {
+                        // minimum order quantity is overridden by contact class
+                        $minimumQuantity = $customerClassMinimumOrderQuantity;
+                    }
+
+                    // assign generated minimum quantity
+                    $variation['data']['variation']['minimumOrderQuantity'] = $minimumQuantity;
+
+                    if ( $variation['data']['variation']['maximumOrderQuantity'] <= 0 )
+                    {
+                        // remove invalid maximum order quantity
+                        $variation['data']['variation']['maximumOrderQuantity'] = null;
+                    }
+                    $maximumOrderQuantity = $variation['data']['variation']['maximumOrderQuantity'];
+
+                    $lot = 0;
+                    $unit = null;
+                    if ( $variation['data']['variation']['mayShowUnitPrice'] )
+                    {
                         $lot = $variation['data']['unit']['content'];
                         $unit = $variation['data']['unit']['unitOfMeasurement'];
-    
-                        $basePriceString = '';
-                        if($lot > 0 && strlen($unit))
-                        {
-                            $basePrice = [];
-                            list($basePrice['lot'], $basePrice['price'], $basePrice['unitKey']) = $basePriceService->getUnitPrice($lot, $salesPrice->price, $unit);
-    
-                            /**
-                             * @var UnitRepositoryContract $unitRepository
-                             */
-                            $unitRepository = pluginApp(UnitRepositoryContract::class);
-    
-                            /** @var AuthHelper $authHelper */
-                            $authHelper = pluginApp(AuthHelper::class);
-    
-                            $unitData = $authHelper->processUnguarded( function() use ($unitRepository, $basePrice)
-                            {
-                                $unitRepository->setFilters(['unitOfMeasurement' => $basePrice['unitKey']]);
-                                return $unitRepository->all(['*'], 1, 1);
-                            });
-                            
-                            
-                            $unitId = $unitData->getResult()->first()->id;
-    
-                            /**
-                             * @var UnitNameRepositoryContract $unitNameRepository
-                             */
-                            $unitNameRepository = pluginApp(UnitNameRepositoryContract::class);
-                            $unitName = $unitNameRepository->findOne($unitId, pluginApp(SessionStorageService::class)->getLang())->name;
-    
-                            $basePriceString = $numberFormatFilter->formatMonetary($basePrice['price'], $salesPrice->currency).' / '.($basePrice['lot'] > 1 ? $basePrice['lot'].' ' : '').$unitName;
-    
-                            
-                        }
-    
-                        $variation['data']['calculatedPrices']['formatted']['basePrice'] = $basePriceString;
                     }
-                    
-                    
-                    $rrp = $salesPriceService->getSalesPriceForVariation($variation['data']['variation']['id'], 'rrp');
-                    if($rrp instanceof SalesPriceSearchResponse)
+
+
+                    $priceList = VariationPriceList::create( $variationId, $minimumQuantity, $maximumOrderQuantity, $lot, $unit );
+
+                    // assign minimum order quantity from price list (may be recalculated depending on available graduated prices)
+                    $variation['data']['variation']['minimumOrderQuantity'] = $priceList->minimumOrderQuantity;
+
+
+                    $quantity = $priceList->minimumOrderQuantity;
+                    if ( isset($options['basketVariationQuantities'][$variationId])
+                        && (float)$options['basketVariationQuantities'][$variationId] > 0 )
                     {
-                        $variation['data']['calculatedPrices']['rrp'] = $rrp;
-                        $variation['data']['calculatedPrices']['formatted']['rrpPrice'] = $numberFormatFilter->formatMonetary($rrp->price, $rrp->currency);
-                        $variation['data']['calculatedPrices']['formatted']['rrpUnitPrice'] = $numberFormatFilter->formatMonetary($rrp->unitPrice, $rrp->currency);
+                        // override quantity by options
+                        $quantity = (float)$options['basketVariationQuantities'][$variationId];
                     }
-                    
-                    $specialOffer = $salesPriceService->getSalesPriceForVariation($variation['data']['variation']['id'], 'specialOffer');
-                    if($specialOffer instanceof SalesPriceSearchResponse)
-                    {
-                        $variation['data']['calculatedPrices']['specialOffer'] = $specialOffer;
-                    }
-                    
+
+                    $variation['data']['calculatedPrices'] = $priceList->getCalculatedPrices( $quantity );
+                    $variation['data']['prices'] = $priceList->toArray( $quantity );
+
+
                     $result['documents'][$key] = $variation;
                 }
             }
         }
-        
+
         return $result;
     }
 
@@ -425,7 +417,7 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
          */
         $configRepo = pluginApp(ConfigRepository::class);
         $enabledRoutes = explode(", ",  $configRepo->get("IO.routing.enabled_routes") );
-       
+
         if(in_array('wish-list', $enabledRoutes) && count($result['documents']))
         {
             /**
@@ -441,6 +433,48 @@ class ItemLoaderFactoryES implements ItemLoaderFactory
                 }
             }
         }
+        return $result;
+    }
+
+    private function attachURLs($result)
+    {
+        if ( count( $result ) && count( $result['ItemURLs'] ) )
+        {
+            /** @var VariationUrlBuilder $itemUrlBuilder */
+            $itemUrlBuilder = pluginApp( VariationUrlBuilder::class );
+            $itemUrlDocuments = $result['ItemURLs']['documents'];
+            foreach( $itemUrlDocuments as $key => $urlDocument )
+            {
+                VariationUrlBuilder::fillItemUrl( $urlDocument['data'] );
+                $document = $result['documents'][$key];
+                if ( count( $document )
+                    && count( $document['data']['texts'] )
+                    && strlen( $document['data']['texts']['urlPath'] ) <= 0 )
+                {
+                    // attach generated item url if not defined
+                    $itemUrl = $itemUrlBuilder->buildUrl(
+                        $urlDocument['data']['item']['id'],
+                        $urlDocument['data']['variation']['id']
+                    )->getPath();
+                    $result['documents'][$key]['data']['texts']['urlPath'] = $itemUrl;
+                }
+
+            }
+        }
+
+        return $result;
+    }
+
+    private function normalizeResult($result)
+    {
+        if( count($result['documents']) )
+        {
+            foreach($result['documents'] as $key => $variation)
+            {
+                $result['documents'][$key]['data'] = DefaultSearchResult::merge( $variation['data'] );
+            }
+        }
+
         return $result;
     }
 }

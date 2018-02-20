@@ -2,30 +2,42 @@
 
 namespace IO\Services\ItemLoader\Loaders;
 
+use IO\Services\ItemLoader\Contracts\FacetExtension;
 use IO\Services\ItemLoader\Contracts\ItemLoaderContract;
 use IO\Services\ItemLoader\Contracts\ItemLoaderPaginationContract;
+use IO\Services\ItemLoader\Helper\FacetFilterBuilder;
+use IO\Services\ItemLoader\Helper\WebshopFilterBuilder;
+use IO\Services\ItemLoader\Services\FacetExtensionContainer;
 use IO\Services\SessionStorageService;
 use IO\Builder\Sorting\SortingBuilder;
 use IO\Services\ItemLoader\Contracts\ItemLoaderSortingContract;
-use IO\Services\TemplateConfigService;
+use Plenty\Modules\Cloud\ElasticSearch\Lib\Collapse\BaseCollapse;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Processor\DocumentProcessor;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Query\Type\TypeInterface;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Search\Document\DocumentSearch;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Search\SearchInterface;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Sorting\SingleSorting;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Source\Mutator\BuiltIn\LanguageMutator;
+use Plenty\Modules\Item\Search\Aggregations\ItemCardinalityAggregation;
+use Plenty\Modules\Item\Search\Aggregations\ItemCardinalityAggregationProcessor;
 use Plenty\Modules\Item\Search\Mutators\ImageMutator;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\Sorting\MultipleSorting;
-use Plenty\Modules\Cloud\ElasticSearch\Lib\Sorting\SortingInterface;
-use Plenty\Modules\Item\Search\Filter\ClientFilter;
-use Plenty\Modules\Item\Search\Filter\VariationBaseFilter;
 use Plenty\Modules\Item\Search\Filter\SearchFilter;
-use Plenty\Modules\Item\Search\Filter\TextFilter;
 use Plenty\Plugin\Application;
 use Plenty\Modules\Cloud\ElasticSearch\Lib\ElasticSearch;
 
 class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, ItemLoaderSortingContract
 {
+    private $options = [];
+    
+    /** @var  WebshopFilterBuilder */
+    private $webshopFilterBuilder;
+    
+    public function __construct(WebshopFilterBuilder $webshopFilterBuilder)
+    {
+        $this->webshopFilterBuilder = $webshopFilterBuilder;
+    }
+    
     /**
      * @return SearchInterface
      */
@@ -34,12 +46,23 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
         $languageMutator = pluginApp(LanguageMutator::class, ["languages" => [pluginApp(SessionStorageService::class)->getLang()]]);
         $imageMutator = pluginApp(ImageMutator::class);
         $imageMutator->addClient(pluginApp(Application::class)->getPlentyId());
-
+        
         $documentProcessor = pluginApp(DocumentProcessor::class);
         $documentProcessor->addMutator($languageMutator);
         $documentProcessor->addMutator($imageMutator);
-
-        return pluginApp(DocumentSearch::class, [$documentProcessor]);
+    
+        $documentSearch = pluginApp(DocumentSearch::class, [$documentProcessor]);
+        $documentSearch->setName('search');
+        
+        $collapse = $this->webshopFilterBuilder->getCollapseForCombinedVariations($this->options);
+        if($collapse instanceof BaseCollapse)
+        {
+            $documentSearch->setCollapse($collapse);
+            $counterAggreation = pluginApp(ItemCardinalityAggregation::class, [pluginApp(ItemCardinalityAggregationProcessor::class)]);
+            $documentSearch->addAggregation($counterAggreation);
+        }
+        
+        return $documentSearch;
     }
     
     /**
@@ -47,7 +70,17 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
      */
     public function getAggregations()
     {
-        return [];
+        /** @var FacetExtensionContainer $facetExtensionContainer */
+        $facetExtensionContainer = pluginApp(FacetExtensionContainer::class);
+    
+        $aggregations = [];
+        foreach ($facetExtensionContainer->getFacetExtensions() as $facetExtension) {
+            if ($facetExtension instanceof FacetExtension) {
+                $aggregations[] = $facetExtension->getAggregation();
+            }
+        }
+    
+        return $aggregations;
     }
     
     /**
@@ -57,36 +90,17 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
      */
     public function getFilterStack($options = [])
     {
-        /**
-         * @var SessionStorageService $sessionStorage
-         */
-        $sessionStorage = pluginApp(SessionStorageService::class);
-        $lang = $sessionStorage->getLang();
+        $lang = pluginApp(SessionStorageService::class)->getLang();
         
-        /** @var ClientFilter $clientFilter */
-        $clientFilter = pluginApp(ClientFilter::class);
-        $clientFilter->isVisibleForClient(pluginApp(Application::class)->getPlentyId());
-        
-        /** @var VariationBaseFilter $variationFilter */
-        $variationFilter = pluginApp(VariationBaseFilter::class);
-        $variationFilter->isActive();
-
-        if(isset($options['variationShowType']) && $options['variationShowType'] == 'main')
-        {
-            $variationFilter->isMain();
-        }
-        elseif(isset($options['variationShowType']) && $options['variationShowType'] == 'child')
-        {
-            $variationFilter->isChild();
-        }
-    
-        /**
-         * @var SearchFilter $searchFilter
-         */
-        $searchFilter = pluginApp(SearchFilter::class);
+        $filters = [];
         
         if(array_key_exists('query', $options) && strlen($options['query']))
         {
+            /**
+             * @var SearchFilter $searchFilter
+             */
+            $searchFilter = pluginApp(SearchFilter::class);
+            
             $searchType = ElasticSearch::SEARCH_TYPE_FUZZY;
             if(array_key_exists('autocomplete', $options) && $options['autocomplete'] === true)
             {
@@ -95,59 +109,20 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
             else
             {
                 $searchFilter->setSearchString($options['query'], $lang, $searchType, ElasticSearch::OR_OPERATOR);
-                $searchFilter->setVariationNumber($options['query']);
             }
-        }
-    
-        $sessionLang = pluginApp(SessionStorageService::class)->getLang();
-    
-        $langMap = [
-            'de' => TextFilter::LANG_DE,
-            'fr' => TextFilter::LANG_FR,
-            'en' => TextFilter::LANG_EN,
-        ];
-    
-        /**
-         * @var TextFilter $textFilter
-         */
-        $textFilter = pluginApp(TextFilter::class);
-    
-        if(isset($langMap[$sessionLang]))
-        {
-            $textFilterLanguage = $langMap[$sessionLang];
-        
-            /**
-             * @var TemplateConfigService $templateConfigService
-             */
-            $templateConfigService = pluginApp(TemplateConfigService::class);
-            $usedItemName = $templateConfigService->get('item.name');
-        
-            $textFilterType = TextFilter::FILTER_ANY_NAME;
-            if(strlen($usedItemName))
-            {
-                if($usedItemName == '0')
-                {
-                    $textFilterType = TextFilter::FILTER_NAME_1;
-                }
-                elseif($usedItemName == '1')
-                {
-                    $textFilterType = TextFilter::FILTER_NAME_2;
-                }
-                elseif($usedItemName == '2')
-                {
-                    $textFilterType = TextFilter::FILTER_NAME_3;
-                }
-            }
-        
-            $textFilter->hasNameInLanguage($textFilterLanguage, $textFilterType);
+            
+            $filters[] = $searchFilter;
         }
         
-        return [
-            $clientFilter,
-            $variationFilter,
-            $searchFilter,
-            $textFilter
-        ];
+        $defaultFilters = $this->webshopFilterBuilder->getFilters($options);
+        $filters = array_merge( $filters, $defaultFilters );
+    
+        /** @var FacetFilterBuilder $facetHelper */
+        $facetHelper = pluginApp(FacetFilterBuilder::class);
+        $facetFilters = $facetHelper->getFilters($options);
+        $filters = array_merge( $filters, $facetFilters );
+    
+        return $filters;
     }
     
     /**
@@ -185,7 +160,7 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
 
                 if($sortingInterface instanceof MultipleSorting)
                 {
-                    $singleSortingInterface = pluginApp(SingleSorting::class,['_score', 'ASC']);
+                    $singleSortingInterface = pluginApp(SingleSorting::class,['_score', 'DESC']);
 
                     $sortingInterface->addSorting($singleSortingInterface);
                 }
@@ -193,5 +168,21 @@ class SearchItems implements ItemLoaderContract, ItemLoaderPaginationContract, I
         }
         
         return $sortingInterface;
+    }
+    
+    public function setOptions($options = [])
+    {
+        $options['useVariationShowType'] = true;
+        $this->options = $options;
+        return $options;
+    }
+
+    /**
+     * @param array $defaultResultFields
+     * @return array
+     */
+    public function getResultFields($defaultResultFields)
+    {
+        return $defaultResultFields;
     }
 }
