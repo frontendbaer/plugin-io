@@ -1,7 +1,9 @@
 <?php
+
 namespace IO\Controllers;
 
-use IO\Helper\CategoryKey;
+use IO\Helper\ContextInterface;
+use IO\Helper\ArrayHelper;
 use IO\Helper\CategoryMap;
 use IO\Helper\TemplateContainer;
 use IO\Services\CategoryService;
@@ -68,54 +70,13 @@ abstract class LayoutController extends Controller
 	 */
 	public function __construct(Application $app, Twig $twig, Dispatcher $event, CategoryRepositoryContract $categoryRepo, CategoryMap $categoryMap, CategoryService $categoryService)
 	{
+	    parent::__construct();
 		$this->app             = $app;
 		$this->twig            = $twig;
 		$this->event           = $event;
 		$this->categoryRepo    = $categoryRepo;
 		$this->categoryMap     = $categoryMap;
 		$this->categoryService = $categoryService;
-	}
-
-	/**
-	 * Prepare global template data which should be available in all templates
-	 * @param TemplateContainer $templateContainer
-	 * @param array $customData Data to pass to template from concrete Controller.
-	 * @return TemplateContainer
-	 */
-	protected function prepareTemplateData(TemplateContainer $templateContainer, $customData = null):TemplateContainer
-	{
-		$templateContainer->setTemplateData($customData);
-
-		return $templateContainer;
-	}
-
-	/**
-	 * Render the category data
-	 * @param $category
-	 * @return string
-	 */
-	protected function renderCategory($category):string
-	{
-		if($category === null)
-		{
-			$category = $this->categoryRepo->get(
-				(int)$this->categoryMap->getID(CategoryKey::PAGE_NOT_FOUND)
-			);
-		}
-
-		if($category === null)
-		{
-            return '';
-		}
-
-		$this->categoryService->setCurrentCategory($category);
-
-		return $this->renderTemplate(
-			"tpl.category." . $category->type,
-			[
-				"category" => $category
-			]
-		);
 	}
 
 	/**
@@ -133,12 +94,13 @@ abstract class LayoutController extends Controller
 		return $message;
 	}
 	
-	/**
-	 * @param string $templateEvent
-	 * @param array $templateData
-	 * @return TemplateContainer
-	 */
-	protected function buildTemplateContainer(string $templateEvent, array $templateData = []):TemplateContainer
+    /**
+     * @param string    $templateEvent
+     * @param mixed     $controllerData
+     * @return TemplateContainer
+     * @throws \ErrorException
+     */
+	protected function buildTemplateContainer(string $templateEvent, $controllerData = []):TemplateContainer
 	{
 		/** @var TemplateContainer $templateContainer */
 		$templateContainer = pluginApp(TemplateContainer::class);
@@ -148,41 +110,36 @@ abstract class LayoutController extends Controller
 		// Add TemplateContainer and template data from specific controller to event's payload
 		$this->event->fire('IO.' . $templateEvent, [
 			$templateContainer,
-			$templateData
+            $controllerData
 		]);
-		
-		if($templateContainer->hasTemplate())
-		{
-			TemplateService::$currentTemplate = $templateEvent;
-			
-			// Prepare the global data only if the template is available
-			$this->prepareTemplateData($templateContainer, $templateData);
-		}
-		return $templateContainer;
+
+		$contextEvent = 'ctx' . substr($templateEvent, 3);
+		$this->event->fire( 'IO.' . $contextEvent, [$templateContainer]);
+        
+        return $templateContainer;
 	}
-
-	/**
-	 * Emit an event to layout plugin to receive twig-template to use for current request.
-	 * Add global template data to custom data from specific controller.
-	 * Will pass request to the plentymarkets system if no template is provided by the layout plugin.
-	 * @param string $templateEvent The event to emit to separate layout plugin
-	 * @param array $templateData Additional template data from concrete controller
-	 * @return string
-	 */
-	protected function renderTemplate(string $templateEvent, array $templateData = []):string
+    
+    /**
+     * Emit an event to layout plugin to receive twig-template to use for current request.
+     * Add global template data to custom data from specific controller.
+     * Will pass request to the plentymarkets system if no template is provided by the layout plugin.
+     *
+     * @param string    $templateEvent
+     * @param mixed     $controllerData
+     *
+     * @return string
+     */
+	protected function renderTemplate(string $templateEvent, $controllerData = []):string
 	{
-		$templateContainer = $this->buildTemplateContainer($templateEvent, $templateData);
+        TemplateService::$currentTemplate = $templateEvent;
+		$templateContainer = $this->buildTemplateContainer($templateEvent, $controllerData);
 		
 		if($templateContainer->hasTemplate())
 		{
 			TemplateService::$currentTemplate = $templateEvent;
-
-			// Prepare the global data only if the template is available
-			$this->prepareTemplateData($templateContainer, $templateData);
-
-
-			// Render the received plugin
-			return $this->renderTemplateContainer($templateContainer);
+            
+            // Render the received plugin
+			return $this->renderTemplateContainer($templateContainer, $controllerData);
 		}
 		else
 		{
@@ -190,16 +147,40 @@ abstract class LayoutController extends Controller
 		}
 	}
 
-	/**
-	 * @param TemplateContainer $templateContainer
-	 * @return string
-	 */
-	protected function renderTemplateContainer(TemplateContainer $templateContainer)
+    /**
+     * @param TemplateContainer $templateContainer
+     * @param mixed             $controllerData
+     *
+     * @return string
+     */
+	protected function renderTemplateContainer(TemplateContainer $templateContainer, $controllerData )
 	{
+	    if ( $templateContainer->getTemplateData() instanceof \Closure )
+        {
+            $callback = $templateContainer->getTemplateData();
+            $templateData = $callback->call($this);
+        }
+        else
+        {
+            $templateData = $templateContainer->getTemplateData();
+        }
+
+        $templateData = ArrayHelper::toArray( $templateData );
+
+        $context = pluginApp( $templateContainer->getContext() );
+
+	    if ( $context instanceof ContextInterface )
+        {
+            $context->init( $controllerData );
+            $context = ArrayHelper::toArray( $context );
+        }
+
+        $twigData = array_merge( $context, $templateData );
+
 		// Render the received plugin
 		return $this->twig->render(
 			$templateContainer->getTemplate(),
-			$templateContainer->getTemplateData()
+            $twigData
 		);
 	}
 
